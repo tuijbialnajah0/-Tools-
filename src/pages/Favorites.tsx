@@ -75,12 +75,9 @@ export function Favorites() {
       "Code base": "/code-base",
       "Pdf Converter": "/pdf-converter",
       "Whatsapp-S-Create Video": "/whatsapp-s-create-video",
-      "Integrated Development Environment (IDE)": "/ide-tool",
-      "IDE Tool": "/ide-tool",
       "Image Dataset Collector": "/image-dataset-collector",
       "WA ~ S generator": "/wa-s-generator",
-      "PFP Anima": "/pfp-anima",
-      "Html viewer": "/html-viewer"
+      "PFP Anima": "/pfp-anima"
     };
 
     if (explicitMappings[toolName]) {

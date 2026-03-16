@@ -32,67 +32,29 @@ export function ImageDatasetCollector() {
   
   const [filterSource, setFilterSource] = useState<string>("All");
   const [filterOrientation, setFilterOrientation] = useState<string>("All");
-  const [activeVariants, setActiveVariants] = useState<string[]>([]);
-  const [nsfwEnabled, setNsfwEnabled] = useState(false);
 
   const creditCost = 20;
 
   const animeCharacters = [
+    "Frieren", "Fern", "Stark", "Himmel", "Eisen", "Heiter",
     "Marin Kitagawa", "Zero Two", "Rem", "Mikasa Ackerman", "Nezuko Kamado",
     "Hatsune Miku", "Power", "Makima", "Megumin", "Aqua", "Asuka Langley",
     "Rei Ayanami", "Saber", "Tohru", "Kaguya Shinomiya", "Chika Fujiwara",
     "Yor Forger", "Anya Forger", "Lucy (Cyberpunk)", "Rebecca (Cyberpunk)"
   ];
 
-  const variants = [
-    { id: 'neko', label: 'Neko', color: 'bg-orange-500' },
-    { id: 'maid', label: 'Maid', color: 'bg-indigo-500' },
-    { id: 'bunny', label: 'Bunny', color: 'bg-pink-500' },
-    { id: 'swimsuit', label: 'Swimsuit', color: 'bg-blue-500' },
-    { id: 'school_uniform', label: 'School', color: 'bg-emerald-500' },
-    { id: 'cosplay', label: 'Cosplay', color: 'bg-purple-500' },
-    { id: 'pfp', label: 'PFP/Icon', color: 'bg-slate-700' },
-  ];
-
-  const toggleVariant = (id: string) => {
-    setActiveVariants(prev => 
-      prev.includes(id) ? prev.filter(v => v !== id) : [...prev, id]
-    );
-  };
-
-  const fetchWithProxy = async (url: string, timeoutMs = 15000) => {
-    const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), timeoutMs);
-    const proxies = [
-      (u: string) => `https://corsproxy.io/?${encodeURIComponent(u)}`,
-      (u: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
-    ];
-
-    try {
-      let res = await fetch(url, { signal: controller.signal }).catch(() => null);
-      
-      if (!res || !res.ok) {
-        for (const proxy of proxies) {
-          res = await fetch(proxy(url), { signal: controller.signal }).catch(() => null);
-          if (res && res.ok) break;
-        }
-      }
-      
-      clearTimeout(id);
-      return res;
-    } catch (e) {
-      clearTimeout(id);
-      return null;
-    }
-  };
-
   const [searchCache, setSearchCache] = useState<Record<string, ImageData[]>>({});
+  const [showFrierenWarning, setShowFrierenWarning] = useState(false);
 
-  const handleSearch = async (e?: React.FormEvent, isLoadMore = false) => {
+  const handleSearch = async (e?: React.FormEvent, isLoadMore = false, bypassWarning = false) => {
     if (e) e.preventDefault();
     if (!keyword.trim()) return;
 
-    // Cache check
+    if (!bypassWarning && keyword.toLowerCase().includes("frieren")) {
+      setShowFrierenWarning(true);
+      return;
+    }
+
     if (!isLoadMore && searchCache[keyword]) {
       setImages(searchCache[keyword]);
       return;
@@ -108,85 +70,64 @@ export function ImageDatasetCollector() {
     }
     
     const currentPage = isLoadMore ? page + 1 : 1;
-    const variantQuery = activeVariants.length > 0 ? ` ${activeVariants.join(' ')}` : '';
-    const fullKeyword = `${keyword.trim()}${variantQuery}`;
-    const safeSearch = nsfwEnabled ? -1 : 1;
+    const fullKeyword = keyword.trim();
     
-    setStatusMessage(isLoadMore ? "Fetching more results..." : "Searching DuckDuckGo...");
+    setStatusMessage(isLoadMore ? "Fetching more results..." : "browsing...");
+
+    const fetchPage = async (p: number) => {
+      const searchUrl = `/api/search-images?q=${encodeURIComponent(fullKeyword)}&page=${p}&nsfw=1`;
+      const res = await fetch(searchUrl);
+      if (!res.ok) throw new Error("Failed to fetch results.");
+      return res.json();
+    };
 
     try {
       setSearchProgress(20);
-      const searchUrl = `https://duckduckgo.com/html/?q=${encodeURIComponent(fullKeyword)}&s=${(currentPage - 1) * 30}&kp=${safeSearch}`;
-      const res = await fetchWithProxy(searchUrl);
-
-      if (!res || !res.ok) {
-        throw new Error("Failed to fetch results from DuckDuckGo. Please try again.");
-      }
-
-      setSearchProgress(50);
-      const html = await res.text();
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(html, "text/html");
-      const resultElements = doc.querySelectorAll(".result");
       
-      const results: ImageData[] = [];
+      let allResults: ImageData[] = [];
       const seenLinks = new Set<string>(isLoadMore ? images.map(img => img.url) : []);
 
-      resultElements.forEach((el, idx) => {
-        const titleEl = el.querySelector(".result__a");
-        const snippetEl = el.querySelector(".result__snippet");
+      // Fetch 2 pages on initial search and on load more
+      const pagesToFetch = isLoadMore ? [currentPage, currentPage + 1] : [1, 2];
+      
+      for (let i = 0; i < pagesToFetch.length; i++) {
+        const p = pagesToFetch[i];
+        setStatusMessage(`browsing page ${p}...`);
+        const data = await fetchPage(p);
         
-        if (titleEl) {
-          let link = titleEl.getAttribute("href") || "";
-          const title = titleEl.textContent?.trim() || "Untitled";
-          const snippet = snippetEl?.textContent?.trim() || "";
-
-          // Clean DuckDuckGo redirect links
-          if (link.includes("uddg=")) {
-            const urlParams = new URLSearchParams(link.split("?")[1]);
-            link = urlParams.get("uddg") || link;
-          }
-
-          // Remove tracking parameters
-          try {
-            const urlObj = new URL(link);
-            const trackingParams = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "fbclid", "gclid"];
-            trackingParams.forEach(param => urlObj.searchParams.delete(param));
-            link = urlObj.toString();
-          } catch (e) {
-            // Invalid URL, skip
-            return;
-          }
-
-          if (link && !seenLinks.has(link)) {
-            seenLinks.add(link);
-            const domain = new URL(link).hostname;
-            
-            results.push({
-              id: `ddg-${currentPage}-${idx}-${Math.random().toString(36).substr(2, 9)}`,
-              url: link,
-              // Use favicon as thumbnail to keep the grid visual
-              thumbnail: `https://www.google.com/s2/favicons?domain=${domain}&sz=128`,
-              source: "DuckDuckGo",
-              sourceUrl: link,
-              title: `${title} - ${snippet}`,
-            });
-          }
+        let pageResults: ImageData[] = [];
+        if (data.source === 'ddg-api') {
+          const apiResults = data.data.results || [];
+          apiResults.forEach((item: any, idx: number) => {
+            if (item.image && !seenLinks.has(item.image)) {
+              seenLinks.add(item.image);
+              pageResults.push({
+                id: `ddg-api-${p}-${idx}-${Math.random().toString(36).substr(2, 9)}`,
+                url: item.image,
+                thumbnail: item.thumbnail || item.image,
+                source: "DuckDuckGo",
+                sourceUrl: item.url || item.image,
+                title: item.title || "Untitled",
+                width: item.width,
+                height: item.height
+              });
+            }
+          });
         }
-      });
+        allResults = [...allResults, ...pageResults];
+        setSearchProgress(20 + ((i + 1) / pagesToFetch.length) * 70);
+      }
 
-      setSearchProgress(90);
-
-      if (results.length === 0 && !isLoadMore) {
+      if (allResults.length === 0 && !isLoadMore) {
         setError("No results found. Try another search.");
       } else {
-        const newImages = isLoadMore ? [...images, ...results] : results;
+        const newImages = isLoadMore ? [...images, ...allResults] : allResults;
         setImages(newImages);
         if (!isLoadMore) {
-          setSearchCache(prev => ({ ...prev, [keyword]: results }));
+          setSearchCache(prev => ({ ...prev, [keyword]: allResults }));
         }
-        setPage(currentPage);
-        setHasMore(results.length >= 20);
+        setPage(isLoadMore ? currentPage + 1 : 2);
+        setHasMore(allResults.length >= 20);
       }
     } catch (err: any) {
       setError(err.message || "An error occurred during search.");
@@ -356,54 +297,6 @@ export function ImageDatasetCollector() {
           </button>
         </form>
 
-        <div className="mt-6 flex flex-col md:flex-row gap-6">
-          <div className="flex-1">
-            <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-3">
-              Character Variants (Special Mode)
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {variants.map((variant) => (
-                <button
-                  key={variant.id}
-                  type="button"
-                  onClick={() => toggleVariant(variant.id)}
-                  className={`px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${
-                    activeVariants.includes(variant.id)
-                      ? `${variant.color} text-white shadow-md scale-105`
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
-                  }`}
-                >
-                  {activeVariants.includes(variant.id) && <CheckCircle2 className="w-4 h-4" />}
-                  {variant.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="w-full md:w-64">
-            <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-3">
-              Content Safety
-            </label>
-            <button
-              type="button"
-              onClick={() => setNsfwEnabled(!nsfwEnabled)}
-              className={`w-full px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center justify-between border-2 ${
-                nsfwEnabled
-                  ? 'bg-red-50 border-red-500 text-red-600 dark:bg-red-900/20'
-                  : 'bg-slate-50 border-slate-200 text-slate-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400'
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <AlertCircle className={`w-4 h-4 ${nsfwEnabled ? 'text-red-500' : 'text-slate-400'}`} />
-                Explicit Content
-              </div>
-              <div className={`w-10 h-5 rounded-full relative transition-colors ${nsfwEnabled ? 'bg-red-500' : 'bg-slate-300 dark:bg-slate-600'}`}>
-                <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${nsfwEnabled ? 'left-6' : 'left-1'}`} />
-              </div>
-            </button>
-          </div>
-        </div>
-
         <div className="mt-6">
           <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-3">
             Popular Anime Characters
@@ -415,7 +308,8 @@ export function ImageDatasetCollector() {
                 type="button"
                 onClick={() => {
                   setKeyword(char);
-                  handleSearch();
+                  // Use a timeout to ensure state is updated before search
+                  setTimeout(() => handleSearch(undefined, false, false), 0);
                 }}
                 className="px-3 py-1.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 text-xs font-bold rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors border border-indigo-100 dark:border-indigo-800"
               >
@@ -632,6 +526,29 @@ export function ImageDatasetCollector() {
                 <p className="text-slate-500 dark:text-slate-400 font-medium">No images match your filters.</p>
               </div>
             )}
+          </div>
+        </div>
+      )}
+      {/* Frieren Warning Modal */}
+      {showFrierenWarning && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 max-w-md w-full shadow-2xl border border-slate-200 dark:border-slate-800 text-center animate-in fade-in zoom-in duration-300">
+            <div className="w-20 h-20 bg-rose-100 dark:bg-rose-900/30 rounded-full flex items-center justify-center mx-auto mb-6">
+              <AlertCircle className="w-10 h-10 text-rose-600" />
+            </div>
+            <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-4">Warning!</h2>
+            <p className="text-lg text-slate-600 dark:text-slate-400 mb-8 leading-relaxed">
+              She is <span className="font-bold text-indigo-600">Tuijbialnajah's</span> waifu , be careful  😾🔪
+            </p>
+            <button
+              onClick={() => {
+                setShowFrierenWarning(false);
+                handleSearch(undefined, false, true);
+              }}
+              className="w-full py-4 bg-rose-600 text-white font-bold rounded-2xl hover:bg-rose-700 transition-all shadow-lg shadow-rose-200 dark:shadow-none"
+            >
+              I understand, I'll be careful
+            </button>
           </div>
         </div>
       )}

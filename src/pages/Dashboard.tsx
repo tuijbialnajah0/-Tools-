@@ -117,12 +117,9 @@ export function Dashboard() {
       "Code base": "/code-base",
       "Pdf Converter": "/pdf-converter",
       "Whatsapp-S-Create Video": "/whatsapp-s-create-video",
-      "Integrated Development Environment (IDE)": "/ide-tool",
-      "IDE Tool": "/ide-tool",
       "Image Dataset Collector": "/image-dataset-collector",
       "WA ~ S generator": "/wa-s-generator",
-      "PFP Anima": "/pfp-anima",
-      "Html viewer": "/html-viewer"
+      "PFP Anima": "/pfp-anima"
     };
 
     if (explicitMappings[toolName]) {
@@ -287,8 +284,9 @@ function ToolCard({
 }: { 
   tool: Tool; 
   isFavorite: boolean; 
-  onToggleFavorite: (e: React.MouseEvent, id: number) => void; 
+  onToggleFavorite: (e: React.MouseEvent, id: number) => void | Promise<void>; 
   onExecute: (tool: Tool) => void;
+  key?: React.Key;
 }) {
   const statusMatch = tool.description.match(/\[STATUS:(working|development)\]/);
   const status = statusMatch ? statusMatch[1] : 'working';
