@@ -99,16 +99,16 @@ export function ImageDatasetCollector() {
         const data = await fetchPage(p);
         
         let pageResults: ImageData[] = [];
-        if (data.source === 'ddg-api') {
+        if (data.data && data.data.results) {
           const apiResults = data.data.results || [];
           apiResults.forEach((item: any, idx: number) => {
             if (item.image && !seenLinks.has(item.image)) {
               seenLinks.add(item.image);
               pageResults.push({
-                id: `ddg-api-${p}-${idx}-${Math.random().toString(36).substr(2, 9)}`,
+                id: `${data.source}-${p}-${idx}-${Math.random().toString(36).substr(2, 9)}`,
                 url: item.image,
                 thumbnail: item.thumbnail || item.image,
-                source: "DuckDuckGo",
+                source: item.source || "DuckDuckGo",
                 sourceUrl: item.url || item.image,
                 title: item.title || "Untitled",
                 width: item.width,

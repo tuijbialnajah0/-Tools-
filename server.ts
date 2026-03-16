@@ -125,7 +125,6 @@ async function startServer() {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
         'Accept-Language': 'en-US,en;q=0.9',
-        'Referer': 'https://duckduckgo.com/',
         'Cache-Control': 'no-cache',
         'Pragma': 'no-cache',
       };
@@ -146,7 +145,7 @@ async function startServer() {
         }
       };
 
-      const fetchWithProxy = async (url: string, options: any) => {
+      const fetchWithProxy = async (url: string, options: any, validate?: (text: string) => boolean) => {
         const proxies = [
           '', // Direct
           'https://api.allorigins.win/raw?url=',
@@ -159,11 +158,26 @@ async function startServer() {
           try {
             const targetUrl = proxy ? `${proxy}${encodeURIComponent(url)}` : url;
             const response = await fetchWithTimeout(targetUrl, options, 5000);
-            lastResponse = response;
+            
             if (response.ok) {
-              return response;
+              const text = await response.text();
+              if (!validate || validate(text)) {
+                console.log(`Proxy ${proxy || 'Direct'} succeeded`);
+                // Return a mock response object with the text already read
+                return {
+                  ok: true,
+                  status: response.status,
+                  text: async () => text,
+                  json: async () => JSON.parse(text)
+                };
+              } else {
+                console.warn(`Proxy ${proxy || 'Direct'} failed validation`);
+                lastResponse = { ok: false, status: response.status, text: async () => text, json: async () => JSON.parse(text) };
+              }
+            } else {
+              console.warn(`Proxy ${proxy || 'Direct'} failed with status: ${response.status}`);
+              lastResponse = response;
             }
-            console.warn(`Proxy ${proxy || 'Direct'} failed with status: ${response.status}`);
           } catch (e) {
             console.warn(`Proxy ${proxy || 'Direct'} failed with error:`, e);
           }
@@ -171,10 +185,36 @@ async function startServer() {
         return lastResponse || { ok: false, status: 500, text: async () => "", json: async () => ({}) };
       };
 
+      // Helper to fetch from Yandex
+      const fetchFromYandex = async () => {
+        const page = Math.floor(Number(start) / 30);
+        const yandexUrl = `https://yandex.com/images/search?text=${encodeURIComponent(query)}&p=${page}`;
+        const yandexRes = await fetchWithProxy(yandexUrl, { headers }, (text) => {
+          return [...text.matchAll(/img_url=([^&]+)/gi)].length > 0;
+        });
+        
+        if (!yandexRes.ok) throw new Error(`Yandex search failed (Status: ${yandexRes.status})`);
+        
+        const html = await yandexRes.text();
+        const matches = [...new Set([...html.matchAll(/img_url=([^&]+)/gi)].map(m => decodeURIComponent(m[1])))];
+        
+        if (matches.length === 0) {
+          throw new Error(`No images found on Yandex. HTML length: ${html.length}. Snippet: ` + html.substring(0, 200));
+        }
+        
+        return matches.map(url => ({
+          image: url,
+          title: query,
+          source: 'Yandex',
+          thumbnail: url
+        }));
+      };
+
       // Use DuckDuckGo's internal API for faster results
       // First, get the VQD token
       let vqdText = "";
-      const vqdResponse = await fetchWithProxy(`https://duckduckgo.com/?q=${encodeURIComponent(query)}`, { headers });
+      const ddgHeaders = { ...headers, 'Referer': 'https://duckduckgo.com/' };
+      const vqdResponse = await fetchWithProxy(`https://duckduckgo.com/?q=${encodeURIComponent(query)}`, { headers: ddgHeaders });
       if (vqdResponse.ok) {
         vqdText = await vqdResponse.text();
       }
@@ -188,29 +228,29 @@ async function startServer() {
         }
       }
       
-      if (!vqdMatch) {
-        console.warn("VQD not found, falling back to HTML search");
-        const htmlUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}&s=${start}&kp=${safeSearch}`;
-        const htmlRes = await fetchWithProxy(htmlUrl, { headers });
-        
-        if (!htmlRes.ok) throw new Error(`HTML search failed (Status: ${htmlRes.status})`);
-        const html = await htmlRes.text();
-        return res.json({ html, source: 'ddg-html' });
+      if (true) {
+        console.warn("VQD not found, falling back to Yandex");
+        try {
+          const results = await fetchFromYandex();
+          return res.json({ data: { results }, source: 'yandex' });
+        } catch (e: any) {
+          throw new Error(`All search methods failed. Last error: ${e.message}`);
+        }
       }
 
       const vqd = vqdMatch[1];
       const apiUrl = `https://duckduckgo.com/i.js?l=us-en&o=json&q=${encodeURIComponent(query)}&vqd=${vqd}&f=,,,&s=${start}`;
       
-      const apiRes = await fetchWithProxy(apiUrl, { headers });
+      const apiRes = await fetchWithProxy(apiUrl, { headers: ddgHeaders });
       
       if (!apiRes.ok) {
-        console.warn(`API search failed (Status: ${apiRes.status}), falling back to HTML`);
-        const htmlUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}&s=${start}&kp=${safeSearch}`;
-        const htmlRes = await fetchWithProxy(htmlUrl, { headers });
-        
-        if (!htmlRes.ok) throw new Error(`Fallback HTML search failed (Status: ${htmlRes.status})`);
-        const html = await htmlRes.text();
-        return res.json({ html, source: 'ddg-html' });
+        console.warn(`API search failed (Status: ${apiRes.status}), falling back to Yandex`);
+        try {
+          const results = await fetchFromYandex();
+          return res.json({ data: { results }, source: 'yandex' });
+        } catch (e: any) {
+          throw new Error(`All search methods failed. Last error: ${e.message}`);
+        }
       }
 
       const data = await apiRes.json();
