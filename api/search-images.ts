@@ -40,9 +40,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const fetchWithProxy = async (url: string, options: any, validate?: (text: string) => boolean) => {
       const proxies = [
         '', // Direct
-        'https://api.allorigins.win/raw?url=',
-        'https://api.codetabs.com/v1/proxy?quest=',
-        'https://corsproxy.io/?'
+        'https://api.allorigins.win/raw?url='
       ];
 
       let lastResponse: any = null;
@@ -76,27 +74,38 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return lastResponse || { ok: false, status: 500, text: async () => "", json: async () => ({}) };
     };
 
-    // Helper to fetch from Yandex
-    const fetchFromYandex = async () => {
-      const page = Math.floor(Number(start) / 30);
-      const yandexUrl = `https://yandex.com/images/search?text=${encodeURIComponent(query)}&p=${page}`;
-      const yandexRes = await fetchWithProxy(yandexUrl, { headers }, (text) => {
-        return [...text.matchAll(/img_url=([^&]+)/gi)].length > 0;
+    // Helper to fetch from Bing
+    const fetchFromBing = async () => {
+      const bingUrl = `https://www.bing.com/images/search?q=${encodeURIComponent(query)}&first=${start}`;
+      const bingRes = await fetchWithProxy(bingUrl, { headers }, (text) => {
+        return [...text.matchAll(/class="iusc"/gi)].length > 0;
       });
       
-      if (!yandexRes.ok) throw new Error(`Yandex search failed (Status: ${yandexRes.status})`);
+      if (!bingRes.ok) throw new Error(`Bing search failed (Status: ${bingRes.status})`);
       
-      const html = await yandexRes.text();
-      const matches = [...new Set([...html.matchAll(/img_url=([^&]+)/gi)].map(m => decodeURIComponent(m[1])))];
+      const html = await bingRes.text();
+      const snippets = [...html.matchAll(/class="iusc"[^>]+m="([^"]+)"/gi)];
       
-      if (matches.length === 0) throw new Error("No images found on Yandex");
+      const images = snippets.map(m => {
+        try {
+          const jsonStr = m[1].replace(/&quot;/g, '"');
+          const obj = JSON.parse(jsonStr);
+          return {
+            image: obj.murl,
+            title: obj.t || query,
+            source: 'Bing',
+            thumbnail: obj.turl
+          };
+        } catch (e) {
+          return null;
+        }
+      }).filter(Boolean);
       
-      return matches.map(url => ({
-        image: url,
-        title: query,
-        source: 'Yandex',
-        thumbnail: url
-      }));
+      if (images.length === 0) {
+        throw new Error(`No images found on Bing. HTML length: ${html.length}. Snippet: ` + html.substring(0, 200));
+      }
+      
+      return images;
     };
 
     // Use DuckDuckGo's internal API for faster results
@@ -118,10 +127,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     
     if (!vqdMatch) {
-      console.warn("VQD not found, falling back to Yandex");
+      console.warn("VQD not found, falling back to Bing");
       try {
-        const results = await fetchFromYandex();
-        return res.json({ data: { results }, source: 'yandex' });
+        const results = await fetchFromBing();
+        return res.json({ data: { results }, source: 'bing' });
       } catch (e: any) {
         throw new Error(`All search methods failed. Last error: ${e.message}`);
       }
@@ -133,10 +142,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const apiRes = await fetchWithProxy(apiUrl, { headers: ddgHeaders });
     
     if (!apiRes.ok) {
-      console.warn(`API search failed (Status: ${apiRes.status}), falling back to Yandex`);
+      console.warn(`API search failed (Status: ${apiRes.status}), falling back to Bing`);
       try {
-        const results = await fetchFromYandex();
-        return res.json({ data: { results }, source: 'yandex' });
+        const results = await fetchFromBing();
+        return res.json({ data: { results }, source: 'bing' });
       } catch (e: any) {
         throw new Error(`All search methods failed. Last error: ${e.message}`);
       }
