@@ -77,7 +77,10 @@ export function ImageDatasetCollector() {
     const fetchPage = async (p: number) => {
       const searchUrl = `/api/search-images?q=${encodeURIComponent(fullKeyword)}&page=${p}&nsfw=1`;
       const res = await fetch(searchUrl);
-      if (!res.ok) throw new Error("Failed to fetch results.");
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to fetch results (${res.status})`);
+      }
       return res.json();
     };
 
