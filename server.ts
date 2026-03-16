@@ -146,25 +146,37 @@ async function startServer() {
         }
       };
 
+      const fetchWithProxy = async (url: string, options: any) => {
+        const proxies = [
+          '', // Direct
+          'https://api.allorigins.win/raw?url=',
+          'https://api.codetabs.com/v1/proxy?quest=',
+          'https://corsproxy.io/?'
+        ];
+
+        let lastResponse: any = null;
+        for (const proxy of proxies) {
+          try {
+            const targetUrl = proxy ? `${proxy}${encodeURIComponent(url)}` : url;
+            const response = await fetchWithTimeout(targetUrl, options, 5000);
+            lastResponse = response;
+            if (response.ok) {
+              return response;
+            }
+            console.warn(`Proxy ${proxy || 'Direct'} failed with status: ${response.status}`);
+          } catch (e) {
+            console.warn(`Proxy ${proxy || 'Direct'} failed with error:`, e);
+          }
+        }
+        return lastResponse || { ok: false, status: 500, text: async () => "", json: async () => ({}) };
+      };
+
       // Use DuckDuckGo's internal API for faster results
       // First, get the VQD token
       let vqdText = "";
-      try {
-        const vqdResponse = await fetchWithTimeout(`https://duckduckgo.com/?q=${encodeURIComponent(query)}`, { headers });
-        if (vqdResponse.ok) {
-          vqdText = await vqdResponse.text();
-        } else {
-          console.warn(`Failed to initialize search (Status: ${vqdResponse.status}), trying proxy...`);
-          const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(`https://duckduckgo.com/?q=${encodeURIComponent(query)}`)}`;
-          const proxyRes = await fetchWithTimeout(proxyUrl, { headers });
-          if (proxyRes.ok) {
-            vqdText = await proxyRes.text();
-          } else {
-            console.warn(`Proxy also failed (Status: ${proxyRes.status})`);
-          }
-        }
-      } catch (e) {
-        console.warn("Error fetching VQD:", e);
+      const vqdResponse = await fetchWithProxy(`https://duckduckgo.com/?q=${encodeURIComponent(query)}`, { headers });
+      if (vqdResponse.ok) {
+        vqdText = await vqdResponse.text();
       }
       
       // Try multiple regex patterns for VQD
@@ -178,19 +190,8 @@ async function startServer() {
       
       if (!vqdMatch) {
         console.warn("VQD not found, falling back to HTML search");
-        let htmlUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}&s=${start}&kp=${safeSearch}`;
-        let htmlRes;
-        try {
-          htmlRes = await fetchWithTimeout(htmlUrl, { headers });
-        } catch (e) {
-          htmlRes = { ok: false, status: 'timeout' };
-        }
-        
-        if (!htmlRes.ok) {
-          console.warn(`HTML search failed (Status: ${htmlRes.status}), trying proxy...`);
-          htmlUrl = `https://corsproxy.io/?${encodeURIComponent(htmlUrl)}`;
-          htmlRes = await fetchWithTimeout(htmlUrl, { headers }, 6000);
-        }
+        const htmlUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}&s=${start}&kp=${safeSearch}`;
+        const htmlRes = await fetchWithProxy(htmlUrl, { headers });
         
         if (!htmlRes.ok) throw new Error(`HTML search failed (Status: ${htmlRes.status})`);
         const html = await htmlRes.text();
@@ -198,35 +199,14 @@ async function startServer() {
       }
 
       const vqd = vqdMatch[1];
-      let apiUrl = `https://duckduckgo.com/i.js?l=us-en&o=json&q=${encodeURIComponent(query)}&vqd=${vqd}&f=,,,&s=${start}`;
+      const apiUrl = `https://duckduckgo.com/i.js?l=us-en&o=json&q=${encodeURIComponent(query)}&vqd=${vqd}&f=,,,&s=${start}`;
       
-      let apiRes;
-      try {
-        apiRes = await fetchWithTimeout(apiUrl, { headers });
-      } catch (e) {
-        apiRes = { ok: false, status: 'timeout' };
-      }
+      const apiRes = await fetchWithProxy(apiUrl, { headers });
       
       if (!apiRes.ok) {
-        console.warn(`API search failed (Status: ${apiRes.status}), trying proxy...`);
-        apiUrl = `https://corsproxy.io/?${encodeURIComponent(apiUrl)}`;
-        apiRes = await fetchWithTimeout(apiUrl, { headers }, 6000);
-      }
-      
-      if (!apiRes.ok) {
-        console.warn(`API proxy failed (Status: ${apiRes.status}), falling back to HTML`);
-        let htmlUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}&s=${start}&kp=${safeSearch}`;
-        let htmlRes;
-        try {
-          htmlRes = await fetchWithTimeout(htmlUrl, { headers });
-        } catch (e) {
-          htmlRes = { ok: false, status: 'timeout' };
-        }
-        
-        if (!htmlRes.ok) {
-          htmlUrl = `https://corsproxy.io/?${encodeURIComponent(htmlUrl)}`;
-          htmlRes = await fetchWithTimeout(htmlUrl, { headers }, 6000);
-        }
+        console.warn(`API search failed (Status: ${apiRes.status}), falling back to HTML`);
+        const htmlUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}&s=${start}&kp=${safeSearch}`;
+        const htmlRes = await fetchWithProxy(htmlUrl, { headers });
         
         if (!htmlRes.ok) throw new Error(`Fallback HTML search failed (Status: ${htmlRes.status})`);
         const html = await htmlRes.text();
