@@ -6,7 +6,7 @@ export function AnimatedBackground() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
-    if (theme === "slate" || !["petals", "constellation", "water", "snow", "matrix"].includes(theme)) {
+    if (theme === "slate" || !["petals", "constellation", "water", "snow", "matrix", "fireflies", "stars", "bubbles", "confetti"].includes(theme)) {
       return;
     }
 
@@ -30,7 +30,11 @@ export function AnimatedBackground() {
     // Initialize particles based on theme
     const init = () => {
       particles = [];
-      const count = theme === "constellation" ? 100 : 50;
+      let count = 50;
+      if (theme === "constellation") count = 100;
+      if (theme === "stars") count = 200;
+      if (theme === "fireflies") count = 40;
+      if (theme === "confetti") count = 150;
       
       for (let i = 0; i < count; i++) {
         if (theme === "petals") {
@@ -75,6 +79,49 @@ export function AnimatedBackground() {
             y: Math.random() * canvas.height,
             speedY: Math.random() * 5 + 2,
             chars: "01".split("")
+          });
+        } else if (theme === "fireflies") {
+          particles.push({
+            x: Math.random() * canvas.width,
+            y: Math.random() * canvas.height,
+            size: Math.random() * 2 + 1,
+            speedX: Math.random() * 1 - 0.5,
+            speedY: Math.random() * 1 - 0.5,
+            opacity: Math.random(),
+            fadeSpeed: Math.random() * 0.02 + 0.01,
+            color: `rgba(234, 179, 8, ` // yellow-500
+          });
+        } else if (theme === "stars") {
+          particles.push({
+            x: Math.random() * canvas.width,
+            y: Math.random() * canvas.height,
+            size: Math.random() * 1.5 + 0.5,
+            opacity: Math.random(),
+            fadeSpeed: Math.random() * 0.05 + 0.01,
+            color: `rgba(255, 255, 255, `
+          });
+        } else if (theme === "bubbles") {
+          particles.push({
+            x: Math.random() * canvas.width,
+            y: Math.random() * canvas.height,
+            size: Math.random() * 15 + 5,
+            speedY: -(Math.random() * 1 + 0.5),
+            speedX: Math.random() * 0.5 - 0.25,
+            wobble: Math.random() * Math.PI * 2,
+            wobbleSpeed: Math.random() * 0.05 + 0.02
+          });
+        } else if (theme === "confetti") {
+          const colors = ['#f43f5e', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6'];
+          particles.push({
+            x: Math.random() * canvas.width,
+            y: Math.random() * canvas.height - canvas.height,
+            sizeX: Math.random() * 8 + 4,
+            sizeY: Math.random() * 8 + 4,
+            speedY: Math.random() * 3 + 1,
+            speedX: Math.random() * 2 - 1,
+            rotation: Math.random() * 360,
+            rotationSpeed: Math.random() * 5 - 2.5,
+            color: colors[Math.floor(Math.random() * colors.length)]
           });
         }
       }
@@ -170,6 +217,79 @@ export function AnimatedBackground() {
           p.y += p.speedY;
           if (p.y > canvas.height) p.y = 0;
         });
+      } else if (theme === "fireflies") {
+        particles.forEach(p => {
+          ctx.fillStyle = `${p.color}${p.opacity})`;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+          ctx.fill();
+          
+          // Add glow
+          ctx.shadowBlur = 10;
+          ctx.shadowColor = `${p.color}${p.opacity})`;
+          ctx.fill();
+          ctx.shadowBlur = 0; // Reset
+
+          p.x += p.speedX;
+          p.y += p.speedY;
+          
+          // Fade in and out
+          p.opacity += p.fadeSpeed;
+          if (p.opacity >= 1 || p.opacity <= 0) {
+            p.fadeSpeed *= -1;
+          }
+
+          // Bounce off walls
+          if (p.x < 0 || p.x > canvas.width) p.speedX *= -1;
+          if (p.y < 0 || p.y > canvas.height) p.speedY *= -1;
+        });
+      } else if (theme === "stars") {
+        particles.forEach(p => {
+          ctx.fillStyle = `${p.color}${p.opacity})`;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+          ctx.fill();
+
+          p.opacity += p.fadeSpeed;
+          if (p.opacity >= 1 || p.opacity <= 0) {
+            p.fadeSpeed *= -1;
+          }
+        });
+      } else if (theme === "bubbles") {
+        ctx.strokeStyle = "rgba(96, 165, 250, 0.5)";
+        ctx.fillStyle = "rgba(96, 165, 250, 0.1)";
+        particles.forEach(p => {
+          ctx.beginPath();
+          ctx.arc(p.x + Math.sin(p.wobble) * 10, p.y, p.size, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+
+          p.y += p.speedY;
+          p.wobble += p.wobbleSpeed;
+
+          if (p.y < -p.size) {
+            p.y = canvas.height + p.size;
+            p.x = Math.random() * canvas.width;
+          }
+        });
+      } else if (theme === "confetti") {
+        particles.forEach(p => {
+          ctx.save();
+          ctx.translate(p.x, p.y);
+          ctx.rotate((p.rotation * Math.PI) / 180);
+          ctx.fillStyle = p.color;
+          ctx.fillRect(-p.sizeX / 2, -p.sizeY / 2, p.sizeX, p.sizeY);
+          ctx.restore();
+
+          p.y += p.speedY;
+          p.x += p.speedX;
+          p.rotation += p.rotationSpeed;
+
+          if (p.y > canvas.height) {
+            p.y = -p.sizeY;
+            p.x = Math.random() * canvas.width;
+          }
+        });
       }
 
       animationFrameId = requestAnimationFrame(draw);
@@ -184,7 +304,7 @@ export function AnimatedBackground() {
     };
   }, [theme]);
 
-  if (theme === "slate" || !["petals", "constellation", "water", "snow", "matrix"].includes(theme)) {
+  if (theme === "slate" || !["petals", "constellation", "water", "snow", "matrix", "fireflies", "stars", "bubbles", "confetti"].includes(theme)) {
     return null;
   }
 

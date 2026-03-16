@@ -4,7 +4,8 @@ export type ThemeType =
   | "slate" | "midnight" | "emerald" | "rose" | "amber" 
   | "violet" | "ocean" | "forest" | "sunset" | "cyberpunk" 
   | "minimalist" | "coffee" | "lavender" | "crimson" | "gold"
-  | "petals" | "constellation" | "water" | "snow" | "matrix";
+  | "petals" | "constellation" | "water" | "snow" | "matrix"
+  | "fireflies" | "stars" | "bubbles" | "confetti";
 
 interface ThemeContextType {
   theme: ThemeType;
@@ -34,6 +35,10 @@ export const themes: { id: ThemeType; name: string; color: string; isAnimated?: 
   { id: "water", name: "Water Ripples", color: "#3b82f6", isAnimated: true },
   { id: "snow", name: "Falling Snow", color: "#f8fafc", isAnimated: true },
   { id: "matrix", name: "Matrix Rain", color: "#22c55e", isAnimated: true },
+  { id: "fireflies", name: "Fireflies", color: "#eab308", isAnimated: true },
+  { id: "stars", name: "Twinkling Stars", color: "#fde047", isAnimated: true },
+  { id: "bubbles", name: "Floating Bubbles", color: "#60a5fa", isAnimated: true },
+  { id: "confetti", name: "Party Confetti", color: "#ec4899", isAnimated: true },
 ];
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {

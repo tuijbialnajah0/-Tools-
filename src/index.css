@@ -28,6 +28,10 @@
 .theme-water { --theme-primary: #3b82f6; --theme-primary-hover: #2563eb; }
 .theme-snow { --theme-primary: #94a3b8; --theme-primary-hover: #64748b; }
 .theme-matrix { --theme-primary: #22c55e; --theme-primary-hover: #16a34a; }
+.theme-fireflies { --theme-primary: #eab308; --theme-primary-hover: #ca8a04; }
+.theme-stars { --theme-primary: #fde047; --theme-primary-hover: #eab308; }
+.theme-bubbles { --theme-primary: #60a5fa; --theme-primary-hover: #3b82f6; }
+.theme-confetti { --theme-primary: #ec4899; --theme-primary-hover: #db2777; }
 
 @layer base {
   .bg-indigo-600 { background-color: var(--theme-primary) !important; }
