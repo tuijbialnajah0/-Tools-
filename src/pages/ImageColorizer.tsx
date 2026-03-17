@@ -14,7 +14,9 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { supabase } from "../lib/supabase";
+import { collection, query, where, getDocs, limit } from "firebase/firestore";
+import { db } from "../firebase";
+import { executeTool } from "../lib/toolService";
 
 const PRESETS = {
   vintage: { name: "Vintage Color", stops: [[0,0,0], [160,110,60], [255,240,220]] },
@@ -34,7 +36,7 @@ export function ImageColorizer() {
   const [error, setError] = useState<string | null>(null);
   const [sliderPosition, setSliderPosition] = useState(50);
   const [hasPaid, setHasPaid] = useState(false);
-  const [toolId, setToolId] = useState<number | null>(null);
+  const [toolId, setToolId] = useState<string | null>(null);
   const [creditCost, setCreditCost] = useState(15);
   
   // Controls
@@ -49,16 +51,18 @@ export function ImageColorizer() {
 
   useEffect(() => {
     const fetchToolId = async () => {
-      const { data } = await supabase
-        .from("tools")
-        .select("id, credit_cost")
-        .ilike("tool_name", "%Image%Colorizer%")
-        .limit(1)
-        .maybeSingle();
-      
-      if (data) {
-        setToolId(data.id);
-        setCreditCost(data.credit_cost);
+      try {
+        const toolsRef = collection(db, "tools");
+        const q = query(toolsRef, where("tool_name", "==", "Image Colorizer"), limit(1));
+        const querySnapshot = await getDocs(q);
+        
+        if (!querySnapshot.empty) {
+          const doc = querySnapshot.docs[0];
+          setToolId(doc.id);
+          setCreditCost(doc.data().credit_cost);
+        }
+      } catch (err) {
+        console.error("Error fetching tool ID:", err);
       }
     };
     fetchToolId();
@@ -208,12 +212,8 @@ export function ImageColorizer() {
 
     if (!hasPaid) {
       // Deduct credits
-      const { error: rpcError } = await supabase.rpc("execute_tool", {
-        p_tool_id: toolId || 0,
-      });
-
-      if (rpcError) {
-        console.error("Credit deduction error:", rpcError);
+      if (toolId && user) {
+        await executeTool(user.id, toolId);
       }
 
       if (user && !isAdmin) {

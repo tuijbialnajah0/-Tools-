@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { format } from "date-fns";
 import { Search, Edit2, Check, X, Plus, Minus, RefreshCw, UserX, AlertCircle, Database } from "lucide-react";
-import { supabase } from "../../lib/supabase";
+import { collection, getDocs, query, orderBy } from "firebase/firestore";
+import { db } from "../../firebase";
+import { adminUpdateCredits } from "../../lib/toolService";
 
 type User = {
   id: string;
@@ -32,13 +34,17 @@ export function AdminUsers() {
     try {
       setLoading(true);
       setError(null);
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .order("created_at", { ascending: false });
+      const profilesRef = collection(db, "profiles");
+      const q = query(profilesRef, orderBy("created_at", "desc"));
+      const querySnapshot = await getDocs(q);
 
-      if (error) throw error;
-      setUsers(data || []);
+      const data = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        created_at: doc.data().created_at?.toDate?.()?.toISOString() || new Date().toISOString()
+      } as User));
+
+      setUsers(data);
     } catch (err: any) {
       console.error(err);
       setError(err.message || "An unknown error occurred while fetching users.");
@@ -52,14 +58,7 @@ export function AdminUsers() {
       const amount = parseInt(creditInput, 10);
       if (isNaN(amount)) return;
 
-      const { error } = await supabase.rpc("admin_update_credits", {
-        p_user_id: userId,
-        p_amount: amount,
-        p_action: "set",
-        p_reason: "Admin adjustment",
-      });
-
-      if (error) throw error;
+      await adminUpdateCredits(userId, amount, "set", "Admin adjustment");
 
       setEditingCredits(null);
       fetchUsers();
@@ -70,14 +69,13 @@ export function AdminUsers() {
 
   const handleQuickAdjust = async (userId: string, amount: number) => {
     try {
-      const { error } = await supabase.rpc("admin_update_credits", {
-        p_user_id: userId,
-        p_amount: Math.abs(amount),
-        p_action: amount > 0 ? "add" : "deduct",
-        p_reason: "Admin quick adjustment",
-      });
+      await adminUpdateCredits(
+        userId, 
+        Math.abs(amount), 
+        amount > 0 ? "add" : "deduct", 
+        "Admin quick adjustment"
+      );
 
-      if (error) throw error;
       fetchUsers();
     } catch (error) {
       console.error(error);
@@ -138,7 +136,7 @@ export function AdminUsers() {
             </div>
             <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-1">No users found</h3>
             <p className="text-slate-500 dark:text-slate-400 max-w-xs mx-auto mb-6">
-              {search ? `No users match "${search}"` : "The user database is currently empty. This usually means Row Level Security (RLS) is blocking the fetch or the profiles table is empty."}
+              {search ? `No users match "${search}"` : "The user database is currently empty."}
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
               <button
@@ -147,21 +145,6 @@ export function AdminUsers() {
               >
                 <RefreshCw className="w-4 h-4 mr-2" />
                 Retry Fetch
-              </button>
-              <button
-                onClick={() => {
-                  const sql = `
--- Run this in Supabase SQL Editor to fix the issue:
-DROP POLICY IF EXISTS "Users can insert their own profile." ON public.profiles;
-CREATE POLICY "Users can insert their own profile." ON public.profiles FOR INSERT WITH CHECK (auth.uid() = id);
-                  `.trim();
-                  navigator.clipboard.writeText(sql);
-                  alert("SQL fix copied to clipboard! Please run it in your Supabase SQL Editor.");
-                }}
-                className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors font-medium flex items-center"
-              >
-                <Database className="w-4 h-4 mr-2" />
-                Copy SQL Fix
               </button>
             </div>
           </div>

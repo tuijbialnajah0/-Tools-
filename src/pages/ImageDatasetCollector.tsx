@@ -2,7 +2,9 @@ import React, { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { Link } from "react-router-dom";
 import { ChevronLeft, Search, Download, Image as ImageIcon, Filter, CheckCircle2, AlertCircle, ExternalLink, Loader2, Layers } from "lucide-react";
-import { supabase } from "../lib/supabase";
+import { collection, query, where, getDocs, limit } from "firebase/firestore";
+import { db } from "../firebase";
+import { executeTool } from "../lib/toolService";
 import JSZip from "jszip";
 
 interface ImageData {
@@ -34,8 +36,29 @@ export function ImageDatasetCollector() {
   const [filterOrientation, setFilterOrientation] = useState<string>("All");
   const [activeVariants, setActiveVariants] = useState<string[]>([]);
   const [nsfwEnabled, setNsfwEnabled] = useState(false);
+  const [toolId, setToolId] = useState<string | null>(null);
+  const [creditCost, setCreditCost] = useState(20);
 
-  const creditCost = 20;
+  React.useEffect(() => {
+    const fetchToolData = async () => {
+      try {
+        const toolsRef = collection(db, "tools");
+        const q = query(toolsRef, where("tool_name", "==", "Image Dataset Collector"), limit(1));
+        const querySnapshot = await getDocs(q);
+        
+        if (!querySnapshot.empty) {
+          const doc = querySnapshot.docs[0];
+          setToolId(doc.id);
+          if (doc.data().credit_cost !== undefined) {
+            setCreditCost(doc.data().credit_cost);
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching tool data:", err);
+      }
+    };
+    fetchToolData();
+  }, []);
 
   const animeCharacters = [
     "Marin Kitagawa", "Zero Two", "Rem", "Mikasa Ackerman", "Nezuko Kamado",
@@ -221,12 +244,15 @@ export function ImageDatasetCollector() {
       URL.revokeObjectURL(url);
       
       // Log transaction
-      if (user) {
-        await supabase.from('transactions').insert({
-          user_id: user.id,
-          amount: -1,
-          type: 'download',
-          description: `Saved search result: ${img.title.substring(0, 50)}...`
+      if (user && toolId) {
+        await executeTool(user.id, toolId, 1); // Charge 1 credit for single save
+      }
+      
+      // Update local user state if not admin
+      if (user && user.role !== 'admin') {
+        updateUser({ 
+          credit_balance: user.credit_balance - 1,
+          total_spent: (user.total_spent || 0) + 1
         });
       }
     } catch (err) {
@@ -274,15 +300,9 @@ export function ImageDatasetCollector() {
       setStatusMessage("Zipping files...");
       const zipBlob = await zip.generateAsync({ type: "blob" });
       
-      const { error: updateError } = await supabase
-        .from("profiles")
-        .update({ 
-          credit_balance: user.credit_balance - creditCost,
-          total_spent: (user.total_spent || 0) + creditCost
-        })
-        .eq("id", user.id);
-
-      if (updateError) throw updateError;
+      if (toolId && user) {
+        await executeTool(user.id, toolId, creditCost);
+      }
       
       updateUser({ 
         credit_balance: user.credit_balance - creditCost,

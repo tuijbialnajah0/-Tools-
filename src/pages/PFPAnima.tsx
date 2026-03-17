@@ -2,7 +2,9 @@ import React, { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import { Link } from "react-router-dom";
 import { ChevronLeft, Search, Download, Image as ImageIcon, ChevronRight, Loader2, AlertCircle, ExternalLink, Sparkles } from "lucide-react";
-import { supabase } from "../lib/supabase";
+import { collection, query, where, getDocs, limit } from "firebase/firestore";
+import { db } from "../firebase";
+import { executeTool } from "../lib/toolService";
 import JSZip from "jszip";
 
 interface ImageData {
@@ -33,18 +35,20 @@ export function PFPAnima() {
 
   useEffect(() => {
     const fetchToolId = async () => {
-      const { data } = await supabase
-        .from("tools")
-        .select("id, credit_cost")
-        .ilike("tool_name", "%PFP%Anima%")
-        .limit(1)
-        .maybeSingle();
-      
-      if (data) {
-        setToolId(data.id);
-        if (data.credit_cost !== undefined && data.credit_cost !== null) {
-          setCreditCost(data.credit_cost);
+      try {
+        const toolsRef = collection(db, "tools");
+        const q = query(toolsRef, where("tool_name", "==", "PFP Anima"), limit(1));
+        const querySnapshot = await getDocs(q);
+        
+        if (!querySnapshot.empty) {
+          const doc = querySnapshot.docs[0];
+          setToolId(doc.id);
+          if (doc.data().credit_cost !== undefined) {
+            setCreditCost(doc.data().credit_cost);
+          }
         }
+      } catch (err) {
+        console.error("Error fetching tool data:", err);
       }
     };
     fetchToolId();
@@ -531,23 +535,8 @@ export function PFPAnima() {
       }
       const blob = await response.blob();
 
-      const { error: updateError } = await supabase
-        .from("profiles")
-        .update({ 
-          credit_balance: user.credit_balance - creditCost,
-          total_spent: (user.total_spent || 0) + creditCost
-        })
-        .eq("id", user.id);
-
-      if (updateError) throw updateError;
-      
-      if (toolId) {
-        await supabase.from("transactions").insert({
-          user_id: user.id,
-          tool_id: toolId,
-          amount: creditCost,
-          type: "usage"
-        });
+      if (user && toolId) {
+        await executeTool(user.id, toolId, creditCost);
       }
 
       updateUser({ 
@@ -619,23 +608,8 @@ export function PFPAnima() {
       const zipBlob = await zip.generateAsync({ type: "blob" });
       const customBlob = new Blob([zipBlob], { type: "application/octet-stream" });
       
-      const { error: updateError } = await supabase
-        .from("profiles")
-        .update({ 
-          credit_balance: user.credit_balance - creditCost,
-          total_spent: (user.total_spent || 0) + creditCost
-        })
-        .eq("id", user.id);
-
-      if (updateError) throw updateError;
-      
-      if (toolId) {
-        await supabase.from("transactions").insert({
-          user_id: user.id,
-          tool_id: toolId,
-          amount: creditCost,
-          type: "usage"
-        });
+      if (user && toolId) {
+        await executeTool(user.id, toolId, creditCost);
       }
 
       updateUser({ 

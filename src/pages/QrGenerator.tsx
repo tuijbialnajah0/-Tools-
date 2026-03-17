@@ -18,7 +18,9 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { supabase } from "../lib/supabase";
+import { collection, query, where, getDocs, limit } from "firebase/firestore";
+import { db } from "../firebase";
+import { executeTool } from "../lib/toolService";
 import { QRCodeCanvas, QRCodeSVG } from "qrcode.react";
 
 type QrType = "url" | "text" | "email" | "phone" | "wifi" | "whatsapp";
@@ -27,7 +29,7 @@ export function QrGenerator() {
   const { user, updateUser } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const [hasPaid, setHasPaid] = useState(false);
-  const [toolId, setToolId] = useState<number | null>(null);
+  const [toolId, setToolId] = useState<string | null>(null);
   const [creditCost, setCreditCost] = useState(5);
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -58,16 +60,20 @@ export function QrGenerator() {
 
   useEffect(() => {
     const fetchToolId = async () => {
-      const { data } = await supabase
-        .from("tools")
-        .select("id, credit_cost")
-        .ilike("tool_name", "%QR%Code%Generator%")
-        .limit(1)
-        .maybeSingle();
-      
-      if (data) {
-        setToolId(data.id);
-        setCreditCost(data.credit_cost);
+      try {
+        const toolsRef = collection(db, "tools");
+        const q = query(toolsRef, where("tool_name", "==", "QR Code Generator"), limit(1));
+        const querySnapshot = await getDocs(q);
+        
+        if (!querySnapshot.empty) {
+          const doc = querySnapshot.docs[0];
+          setToolId(doc.id);
+          if (doc.data().credit_cost !== undefined) {
+            setCreditCost(doc.data().credit_cost);
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching tool data:", err);
       }
     };
     fetchToolId();
@@ -114,12 +120,8 @@ export function QrGenerator() {
 
     try {
       // Deduct credits
-      const { error: rpcError } = await supabase.rpc("execute_tool", {
-        p_tool_id: toolId || 0,
-      });
-
-      if (rpcError) {
-        console.error("Credit deduction error:", rpcError);
+      if (toolId && user) {
+        await executeTool(user.id, toolId, creditCost);
       }
 
       if (user && !isAdmin) {

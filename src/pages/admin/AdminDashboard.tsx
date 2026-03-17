@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Users, Wrench, Activity } from "lucide-react";
-import { supabase } from "../../lib/supabase";
+import { collection, getDocs, getCountFromServer } from "firebase/firestore";
+import { db } from "../../firebase";
 
 export function AdminDashboard() {
   const [stats, setStats] = useState({
@@ -13,29 +14,23 @@ export function AdminDashboard() {
   useEffect(() => {
     async function fetchStats() {
       try {
-        const { count: totalUsers } = await supabase
-          .from("profiles")
-          .select("*", { count: "exact", head: true });
+        const profilesRef = collection(db, "profiles");
+        const toolsRef = collection(db, "tools");
+        const usageRef = collection(db, "tool_usage");
 
-        const { count: totalTools } = await supabase
-          .from("tools")
-          .select("*", { count: "exact", head: true });
+        const [usersCount, toolsCount, usageCount, usageSnapshot] = await Promise.all([
+          getCountFromServer(profilesRef),
+          getCountFromServer(toolsRef),
+          getCountFromServer(usageRef),
+          getDocs(usageRef)
+        ]);
 
-        const { count: totalUsage } = await supabase
-          .from("tool_usage")
-          .select("*", { count: "exact", head: true });
-
-        const { data: usageData } = await supabase
-          .from("tool_usage")
-          .select("credits_spent");
-
-        const totalCreditsSpent =
-          usageData?.reduce((acc, curr) => acc + curr.credits_spent, 0) || 0;
+        const totalCreditsSpent = usageSnapshot.docs.reduce((acc, doc) => acc + (doc.data().credits_spent || 0), 0);
 
         setStats({
-          totalUsers: totalUsers || 0,
-          totalTools: totalTools || 0,
-          totalUsage: totalUsage || 0,
+          totalUsers: usersCount.data().count,
+          totalTools: toolsCount.data().count,
+          totalUsage: usageCount.data().count,
           totalCreditsSpent,
         });
       } catch (error) {

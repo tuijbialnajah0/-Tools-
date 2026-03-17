@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Trophy, Medal, Crown, TrendingUp, Search, RefreshCw, AlertCircle, Shield } from "lucide-react";
-import { supabase } from "../lib/supabase";
+import { collection, getDocs, query, orderBy, limit } from "firebase/firestore";
+import { db } from "../firebase";
 import { calculateExp, getRank } from "../lib/ranks";
 
 type LeaderboardEntry = {
@@ -30,15 +31,13 @@ export function Leaderboard() {
       setLoading(true);
       setError(null);
       
-      // Fetch from the public view we created
+      const profilesRef = collection(db, "profiles");
       const orderColumn = activeTab === "exp" ? "total_spent" : sortBy;
-      const { data, error } = await supabase
-        .from("leaderboard")
-        .select("*")
-        .order(orderColumn, { ascending: false });
+      const q = query(profilesRef, orderBy(orderColumn, "desc"), limit(100));
+      const querySnapshot = await getDocs(q);
 
-      if (error) throw error;
-      setEntries(data || []);
+      const data = querySnapshot.docs.map(doc => doc.data() as LeaderboardEntry);
+      setEntries(data);
     } catch (err: any) {
       console.error("Error fetching leaderboard:", err);
       setError(err.message || "Failed to load leaderboard data.");

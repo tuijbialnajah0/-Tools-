@@ -1,4 +1,13 @@
-import { supabase } from "./supabase";
+import { 
+  collection, 
+  getDocs, 
+  addDoc, 
+  query, 
+  where,
+  Timestamp,
+  getCountFromServer
+} from "firebase/firestore";
+import { db } from "../firebase";
 
 export const DEFAULT_TOOLS = [
   { tool_name: "Image Colorizer", description: "Convert black and white images to color using local processing. [STATUS:working]", credit_cost: 15, category: "Image Processing", enabled: true },
@@ -17,7 +26,6 @@ export const DEFAULT_TOOLS = [
   { tool_name: "Html viewer", description: "View and run HTML code with live preview and file support. [STATUS:working]", credit_cost: 0, category: "Developer Tools", enabled: true }
 ];
 
-let isSyncing = false;
 let syncPromise: Promise<void> | null = null;
 
 export async function syncDefaultTools(force = false) {
@@ -25,26 +33,31 @@ export async function syncDefaultTools(force = false) {
   
   syncPromise = (async () => {
     try {
+      const toolsRef = collection(db, "tools");
+      
       if (force) {
-        const { data: existingTools } = await supabase.from("tools").select("tool_name");
-        const existingNames = new Set(existingTools?.map(t => t.tool_name.toLowerCase()) || []);
-        const missingTools = DEFAULT_TOOLS.filter(t => !existingNames.has(t.tool_name.toLowerCase()));
+        const toolsSnap = await getDocs(toolsRef);
+        const existingNames = new Set(toolsSnap.docs.map(doc => doc.data().tool_name.toLowerCase()));
         
-        if (missingTools.length > 0) {
-          await supabase.from("tools").insert(missingTools);
+        for (const tool of DEFAULT_TOOLS) {
+          if (!existingNames.has(tool.tool_name.toLowerCase())) {
+            await addDoc(toolsRef, {
+              ...tool,
+              created_at: Timestamp.now()
+            });
+          }
         }
         return;
       }
 
-      // Only sync if the tools table is empty to avoid overwriting admin choices (deletions/disabling)
-      const { count, error: countError } = await supabase
-        .from("tools")
-        .select("*", { count: 'exact', head: true });
-      
-      if (countError) return;
-
-      if (count === 0) {
-        await supabase.from("tools").insert(DEFAULT_TOOLS);
+      const countSnap = await getCountFromServer(toolsRef);
+      if (countSnap.data().count === 0) {
+        for (const tool of DEFAULT_TOOLS) {
+          await addDoc(toolsRef, {
+            ...tool,
+            created_at: Timestamp.now()
+          });
+        }
       }
     } catch (err) {
       console.error("Failed to sync default tools:", err);

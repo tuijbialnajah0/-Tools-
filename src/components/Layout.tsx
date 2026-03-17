@@ -31,7 +31,8 @@ import {
 import { clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { SendCreditModal } from "./SendCreditModal";
-import { supabase } from "../lib/supabase";
+import { db } from "../firebase";
+import { collection, onSnapshot, doc, getDoc } from "firebase/firestore";
 
 function cn(...inputs: (string | undefined | null | false)[]) {
   return twMerge(clsx(inputs));
@@ -81,44 +82,38 @@ export function Layout() {
   }, [isDarkMode]);
 
   useEffect(() => {
-    const fetchFavorites = async () => {
-      if (!user) return;
-      try {
-        const { data, error } = await supabase
-          .from("favorites")
-          .select("tool_id, tools(*)")
-          .eq("user_id", user.id);
-        
-        if (error) {
-          console.warn("Favorites fetch error:", error);
-          return;
-        }
-        
-        if (data) {
-          setFavoriteTools(data.map(f => f.tools).filter(Boolean));
-        }
-      } catch (err) {
-        console.error("Error fetching favorites:", err);
-      }
-    };
+    if (!user) return;
 
-    fetchFavorites();
+    // Set up real-time subscription for favorites using Firestore onSnapshot
+    const favoritesRef = collection(db, "profiles", user.id, "favorites");
     
-    // Set up real-time subscription for favorites
-    const channel = supabase
-      .channel('favorites-changes')
-      .on('postgres_changes', { 
-        event: '*', 
-        schema: 'public', 
-        table: 'favorites',
-        filter: `user_id=eq.${user?.id}`
-      }, () => {
-        fetchFavorites();
-      })
-      .subscribe();
+    const unsubscribe = onSnapshot(favoritesRef, async (snapshot) => {
+      try {
+        const toolsList: any[] = [];
+        
+        for (const favoriteDoc of snapshot.docs) {
+          const toolId = favoriteDoc.id;
+          const toolRef = doc(db, "tools", toolId);
+          const toolSnap = await getDoc(toolRef);
+          
+          if (toolSnap.exists()) {
+            toolsList.push({
+              id: toolSnap.id,
+              ...toolSnap.data()
+            });
+          }
+        }
+        
+        setFavoriteTools(toolsList);
+      } catch (err) {
+        console.error("Error fetching favorites in real-time:", err);
+      }
+    }, (error) => {
+      console.error("Favorites snapshot error:", error);
+    });
 
     return () => {
-      supabase.removeChannel(channel);
+      unsubscribe();
     };
   }, [user?.id]);
 

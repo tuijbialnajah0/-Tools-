@@ -2,7 +2,9 @@ import React, { useState, useRef, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import { Link } from "react-router-dom";
 import { ChevronLeft, Upload, X, CheckCircle2, AlertCircle, Download, MessageCircle, Video, Plus, Crop } from "lucide-react";
-import { supabase } from "../lib/supabase";
+import { db } from "../firebase";
+import { collection, query, where, getDocs } from "firebase/firestore";
+import { executeTool } from "../lib/toolService";
 import JSZip from "jszip";
 import { FFmpeg } from "@ffmpeg/ffmpeg";
 import { fetchFile, toBlobURL } from "@ffmpeg/util";
@@ -55,14 +57,21 @@ export function WhatsappSCreateVideo() {
   useEffect(() => {
     const fetchToolData = async () => {
       try {
-        const { data } = await supabase
-          .from("tools")
-          .select("id, credit_cost")
-          .ilike("tool_name", "Whatsapp-S-Create Video")
-          .maybeSingle();
+        const toolsRef = collection(db, "tools");
+        const q = query(
+          toolsRef, 
+          where("enabled", "==", true)
+        );
+        const querySnapshot = await getDocs(q);
+        
+        const toolDoc = querySnapshot.docs.find(doc => {
+          const name = doc.data().tool_name || "";
+          return name.toLowerCase().includes("whatsapp-s-create video");
+        });
           
-        if (data) {
-          setToolId(data.id);
+        if (toolDoc) {
+          setToolId(toolDoc.id as any);
+          const data = toolDoc.data();
           if (data.credit_cost !== undefined) {
             setBaseCost(data.credit_cost);
           }
@@ -271,15 +280,12 @@ export function WhatsappSCreateVideo() {
       setStep(3);
 
       // Deduct credits
-      const { error: updateError } = await supabase
-        .from("profiles")
-        .update({ 
-          credit_balance: user.credit_balance - baseCost,
-          total_spent: (user.total_spent || 0) + baseCost
-        })
-        .eq("id", user.id);
+      const success = await executeTool(user.id, toolId?.toString() || "whatsapp-s-create-video", baseCost);
+      
+      if (!success) {
+        throw new Error("Failed to deduct credits. Please check your balance.");
+      }
 
-      if (updateError) throw updateError;
       updateUser({ 
         credit_balance: user.credit_balance - baseCost,
         total_spent: (user.total_spent || 0) + baseCost

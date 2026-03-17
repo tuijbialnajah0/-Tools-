@@ -2,11 +2,21 @@ import React, { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import { Play, CheckCircle2, Settings, Heart, RotateCw } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
-import { supabase } from "../lib/supabase";
+import { 
+  collection, 
+  query, 
+  where, 
+  getDocs, 
+  doc, 
+  deleteDoc, 
+  setDoc,
+  onSnapshot
+} from "firebase/firestore";
+import { db } from "../firebase";
 import { syncDefaultTools } from "../lib/defaultTools";
 
 type Tool = {
-  id: number;
+  id: string;
   tool_name: string;
   description: string;
   credit_cost: number;
@@ -17,7 +27,7 @@ export function Dashboard() {
   const { user, updateUser } = useAuth();
   const navigate = useNavigate();
   const [tools, setTools] = useState<Tool[]>([]);
-  const [favoriteToolIds, setFavoriteToolIds] = useState<number[]>([]);
+  const [favoriteToolIds, setFavoriteToolIds] = useState<string[]>([]);
   const [loadingTools, setLoadingTools] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -31,31 +41,36 @@ export function Dashboard() {
       // Sync default tools first to ensure they exist in the database
       await syncDefaultTools(forceSync);
       
-      const [toolsRes, favoritesRes] = await Promise.allSettled([
-        supabase.from("tools").select("*").eq("enabled", true),
-        user ? supabase.from("favorites").select("tool_id").eq("user_id", user.id) : Promise.resolve({ data: [], error: null })
-      ]);
+      const toolsRef = collection(db, "tools");
+      const q = query(toolsRef, where("enabled", "==", true));
+      const toolsSnap = await getDocs(q);
       
-      if (toolsRes.status === 'fulfilled' && toolsRes.value.data) {
-        // Filter out duplicates by tool_name (case-insensitive)
-        const seenNames = new Set<string>();
-        const uniqueTools = toolsRes.value.data.filter(tool => {
-          const normalizedName = tool.tool_name.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-          if (seenNames.has(normalizedName)) {
-            return false;
-          }
+      const toolsList: Tool[] = [];
+      const seenNames = new Set<string>();
+      
+      toolsSnap.forEach((doc) => {
+        const data = doc.data();
+        const toolName = data.tool_name.trim();
+        const normalizedName = toolName.toLowerCase().replace(/[^a-z0-9]/g, '');
+        
+        if (!seenNames.has(normalizedName)) {
           seenNames.add(normalizedName);
-          return true;
-        });
-        setTools(uniqueTools);
-      } else if (toolsRes.status === 'rejected' || (toolsRes.status === 'fulfilled' && toolsRes.value.error)) {
-        throw (toolsRes.status === 'fulfilled' ? toolsRes.value.error : toolsRes.reason);
-      }
+          toolsList.push({
+            id: doc.id,
+            tool_name: toolName,
+            description: data.description || "",
+            credit_cost: data.credit_cost || 0,
+            category: data.category || "General"
+          });
+        }
+      });
+      
+      setTools(toolsList);
 
-      if (favoritesRes.status === 'fulfilled' && favoritesRes.value.data) {
-        setFavoriteToolIds(favoritesRes.value.data.map((f: any) => f.tool_id));
-      } else {
-        console.warn("Favorites table might be missing or inaccessible");
+      if (user) {
+        const favoritesRef = collection(db, "profiles", user.id, "favorites");
+        const favoritesSnap = await getDocs(favoritesRef);
+        setFavoriteToolIds(favoritesSnap.docs.map(doc => doc.id));
       }
     } catch (err: any) {
       console.error("Error fetching data:", err);
@@ -74,28 +89,19 @@ export function Dashboard() {
     fetchData(true);
   };
 
-  const toggleFavorite = async (e: React.MouseEvent, toolId: number) => {
+  const toggleFavorite = async (e: React.MouseEvent, toolId: string) => {
     e.stopPropagation();
     if (!user) return;
 
     const isFavorite = favoriteToolIds.includes(toolId);
+    const favoriteRef = doc(db, "profiles", user.id, "favorites", toolId);
     
     try {
       if (isFavorite) {
-        const { error } = await supabase
-          .from("favorites")
-          .delete()
-          .eq("user_id", user.id)
-          .eq("tool_id", toolId);
-        
-        if (error) throw error;
+        await deleteDoc(favoriteRef);
         setFavoriteToolIds(prev => prev.filter(id => id !== toolId));
       } else {
-        const { error } = await supabase
-          .from("favorites")
-          .insert([{ user_id: user.id, tool_id: toolId }]);
-        
-        if (error) throw error;
+        await setDoc(favoriteRef, { tool_id: toolId, created_at: new Date().toISOString() });
         setFavoriteToolIds(prev => [...prev, toolId]);
       }
     } catch (err) {
@@ -287,7 +293,7 @@ function ToolCard({
 }: { 
   tool: Tool; 
   isFavorite: boolean; 
-  onToggleFavorite: (e: React.MouseEvent, id: number) => void; 
+  onToggleFavorite: (e: React.MouseEvent, id: string) => void; 
   onExecute: (tool: Tool) => void;
 }) {
   const statusMatch = tool.description.match(/\[STATUS:(working|development)\]/);

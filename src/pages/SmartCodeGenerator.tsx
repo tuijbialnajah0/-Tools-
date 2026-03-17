@@ -11,7 +11,9 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { supabase } from "../lib/supabase";
+import { collection, query, where, getDocs, limit } from "firebase/firestore";
+import { db } from "../firebase";
+import { executeTool } from "../lib/toolService";
 import Editor from "react-simple-code-editor";
 import Prism from "prismjs";
 import "prismjs/themes/prism-tomorrow.css";
@@ -51,21 +53,23 @@ export function SmartCodeGenerator() {
   const [fileName, setFileName] = useState("untitled");
   const [error, setError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [toolId, setToolId] = useState<number | null>(null);
+  const [toolId, setToolId] = useState<string | null>(null);
   const [creditCost, setCreditCost] = useState(5);
 
   useEffect(() => {
     const fetchToolId = async () => {
-      const { data } = await supabase
-        .from("tools")
-        .select("id, credit_cost")
-        .ilike("tool_name", "%Smart%Code%Generator%")
-        .limit(1)
-        .maybeSingle();
-      
-      if (data) {
-        setToolId(data.id);
-        setCreditCost(data.credit_cost);
+      try {
+        const toolsRef = collection(db, "tools");
+        const q = query(toolsRef, where("tool_name", "==", "Smart Code Generator"), limit(1));
+        const querySnapshot = await getDocs(q);
+        
+        if (!querySnapshot.empty) {
+          const doc = querySnapshot.docs[0];
+          setToolId(doc.id);
+          setCreditCost(doc.data().credit_cost);
+        }
+      } catch (err) {
+        console.error("Error fetching tool ID:", err);
       }
     };
     fetchToolId();
@@ -125,12 +129,8 @@ export function SmartCodeGenerator() {
 
     try {
       // Deduct credits
-      const { error: rpcError } = await supabase.rpc("execute_tool", {
-        p_tool_id: toolId || 0,
-      });
-
-      if (rpcError) {
-        console.error("Credit deduction error:", rpcError);
+      if (toolId && user) {
+        await executeTool(user.id, toolId);
       }
 
       if (user && !isAdmin) {

@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from "react";
 import { Plus, Edit2, ToggleLeft, ToggleRight, Trash2, AlertTriangle } from "lucide-react";
-import { supabase } from "../../lib/supabase";
+import { collection, getDocs, query, orderBy, addDoc, updateDoc, doc, deleteDoc, where, writeBatch } from "firebase/firestore";
+import { db } from "../../firebase";
 import { DEFAULT_TOOLS, syncDefaultTools } from "../../lib/defaultTools";
 
 type Tool = {
-  id: number;
+  id: string;
   tool_name: string;
   description: string;
   credit_cost: number;
@@ -15,7 +16,7 @@ type Tool = {
 export function AdminTools() {
   const [tools, setTools] = useState<Tool[]>([]);
   const [isAdding, setIsAdding] = useState(false);
-  const [editingTool, setEditingTool] = useState<number | null>(null);
+  const [editingTool, setEditingTool] = useState<string | null>(null);
   const [deletingTool, setDeletingTool] = useState<Tool | null>(null);
 
   const [formData, setFormData] = useState({
@@ -33,16 +34,16 @@ export function AdminTools() {
 
   const fetchTools = async () => {
     try {
-      const { data, error } = await supabase
-        .from("tools")
-        .select("*")
-        .order("id", { ascending: true });
-
-      if (error) throw error;
+      const toolsRef = collection(db, "tools");
+      const q = query(toolsRef, orderBy("tool_name", "asc"));
+      const querySnapshot = await getDocs(q);
       
-      if (data) {
-        setTools(data);
-      }
+      const data = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as Tool));
+      
+      setTools(data);
     } catch (error) {
       console.error(error);
     }
@@ -61,16 +62,17 @@ export function AdminTools() {
 
   const cleanupDuplicates = async () => {
     try {
-      const { data, error } = await supabase
-        .from("tools")
-        .select("*")
-        .order("tool_name", { ascending: true });
+      const toolsRef = collection(db, "tools");
+      const q = query(toolsRef, orderBy("tool_name", "asc"));
+      const querySnapshot = await getDocs(q);
+      
+      const data = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as Tool));
 
-      if (error) throw error;
-      if (!data) return;
-
-      const seen = new Map<string, number>();
-      const duplicates: number[] = [];
+      const seen = new Map<string, string>();
+      const duplicates: string[] = [];
 
       data.forEach(tool => {
         const normalizedName = tool.tool_name.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -83,12 +85,12 @@ export function AdminTools() {
 
       if (duplicates.length > 0) {
         if (confirm(`Found ${duplicates.length} duplicate tools. Delete them?`)) {
-          const { error: deleteError } = await supabase
-            .from("tools")
-            .delete()
-            .in("id", duplicates);
+          const batch = writeBatch(db);
+          duplicates.forEach(id => {
+            batch.delete(doc(db, "tools", id));
+          });
+          await batch.commit();
           
-          if (deleteError) throw deleteError;
           alert(`Deleted ${duplicates.length} duplicate tools.`);
           fetchTools();
         }
@@ -113,14 +115,11 @@ export function AdminTools() {
       };
 
       if (editingTool) {
-        const { error } = await supabase
-          .from("tools")
-          .update(dataToSave)
-          .eq("id", editingTool);
-        if (error) throw error;
+        const toolRef = doc(db, "tools", editingTool);
+        await updateDoc(toolRef, dataToSave);
       } else {
-        const { error } = await supabase.from("tools").insert([dataToSave]);
-        if (error) throw error;
+        const toolsRef = collection(db, "tools");
+        await addDoc(toolsRef, dataToSave);
       }
 
       setIsAdding(false);
@@ -141,26 +140,18 @@ export function AdminTools() {
 
   const handleToggleEnable = async (tool: Tool) => {
     try {
-      const { error } = await supabase
-        .from("tools")
-        .update({ enabled: !tool.enabled })
-        .eq("id", tool.id);
-
-      if (error) throw error;
+      const toolRef = doc(db, "tools", tool.id);
+      await updateDoc(toolRef, { enabled: !tool.enabled });
       fetchTools();
     } catch (error) {
       console.error(error);
     }
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: string) => {
     try {
-      const { error } = await supabase
-        .from("tools")
-        .delete()
-        .eq("id", id);
-
-      if (error) throw error;
+      const toolRef = doc(db, "tools", id);
+      await deleteDoc(toolRef);
       setDeletingTool(null);
       fetchTools();
     } catch (error) {

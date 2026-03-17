@@ -1,0 +1,78 @@
+{
+  "entities": {
+    "Profile": {
+      "title": "User Profile",
+      "description": "Stores user information, credits, and roles.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "format": "email" },
+        "username": { "type": "string" },
+        "age": { "type": "integer" },
+        "gender": { "type": "string", "enum": ["male", "female", "other"] },
+        "avatar_url": { "type": "string" },
+        "role": { "type": "string", "enum": ["user", "admin"] },
+        "credit_balance": { "type": "integer" },
+        "total_spent": { "type": "number" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "role", "credit_balance"]
+    },
+    "Tool": {
+      "title": "Tool",
+      "description": "Available tools in the application.",
+      "type": "object",
+      "properties": {
+        "tool_name": { "type": "string" },
+        "description": { "type": "string" },
+        "credit_cost": { "type": "integer" },
+        "enabled": { "type": "boolean" },
+        "category": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["tool_name", "credit_cost"]
+    },
+    "ToolUsage": {
+      "title": "Tool Usage",
+      "description": "Log of tool usage by users.",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string" },
+        "tool_id": { "type": "string" },
+        "credits_spent": { "type": "integer" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["user_id", "tool_id", "credits_spent"]
+    },
+    "CreditHistory": {
+      "title": "Credit History",
+      "description": "History of credit transactions.",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string" },
+        "amount": { "type": "integer" },
+        "type": { "type": "string", "enum": ["add", "deduct", "set"] },
+        "reason": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["user_id", "amount", "type"]
+    }
+  },
+  "firestore": {
+    "/profiles/{userId}": {
+      "schema": "Profile",
+      "description": "User profiles indexed by UID."
+    },
+    "/tools/{toolId}": {
+      "schema": "Tool",
+      "description": "Collection of tools."
+    },
+    "/tool_usage/{usageId}": {
+      "schema": "ToolUsage",
+      "description": "Usage logs."
+    },
+    "/credit_history/{historyId}": {
+      "schema": "CreditHistory",
+      "description": "Credit transaction history."
+    }
+  }
+}

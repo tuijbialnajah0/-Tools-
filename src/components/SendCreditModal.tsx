@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { X, Send, AlertCircle, CheckCircle2, Database } from "lucide-react";
-import { supabase } from "../lib/supabase";
+import { db } from "../firebase";
+import { collection, query, where, getDocs, runTransaction, doc } from "firebase/firestore";
 import { useAuth } from "../context/AuthContext";
 
 interface SendCreditModalProps {
@@ -15,7 +16,6 @@ export function SendCreditModal({ isOpen, onClose }: SendCreditModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [showSqlFix, setShowSqlFix] = useState(false);
 
   if (!isOpen) return null;
 
@@ -23,7 +23,6 @@ export function SendCreditModal({ isOpen, onClose }: SendCreditModalProps) {
     e.preventDefault();
     setError(null);
     setSuccess(null);
-    setShowSqlFix(false);
 
     if (!user) {
       setError("You must be logged in to send credits.");
@@ -50,67 +49,59 @@ export function SendCreditModal({ isOpen, onClose }: SendCreditModalProps) {
 
     try {
       // Find receiver by username
-      const { data: receiverData, error: receiverError } = await supabase
-        .from("profiles")
-        .select("id, credit_balance")
-        .eq("username", username.trim())
-        .single();
+      const profilesRef = collection(db, "profiles");
+      const q = query(profilesRef, where("username", "==", username.trim()));
+      const querySnapshot = await getDocs(q);
 
-      if (receiverError || !receiverData) {
+      if (querySnapshot.empty) {
         setError("Username doesn't exist.");
         setIsSubmitting(false);
         return;
       }
 
-      // We will use an RPC function if it exists, otherwise fallback to direct update
-      // Direct update will likely fail due to RLS if the user is not an admin
-      
-      // First try to use the admin_update_credits RPC if we are admin
-      if (user.role === "admin") {
-        const { error: rpcError } = await supabase.rpc("admin_update_credits", {
-          p_user_id: receiverData.id,
-          p_amount: creditAmount,
-          p_action: "add",
-          p_reason: `Transfer from admin`,
-        });
-        
-        if (rpcError) throw rpcError;
-      } else {
-        // For normal users, try to use a transfer_credits RPC if we created one
-        const { error: rpcError } = await supabase.rpc("transfer_credits", {
-          p_sender_id: user.id,
-          p_receiver_id: receiverData.id,
-          p_amount: creditAmount
-        });
-        
-        if (rpcError) {
-          // If RPC doesn't exist or fails, try direct update (will likely fail due to RLS)
-          console.log("RPC failed, trying direct update", rpcError);
-          
-          // Deduct from sender
-          const { error: senderUpdateError } = await supabase
-            .from("profiles")
-            .update({ credit_balance: user.credit_balance - creditAmount })
-            .eq("id", user.id);
+      const receiverDoc = querySnapshot.docs[0];
+      const receiverId = receiverDoc.id;
+      const receiverData = receiverDoc.data();
 
-          if (senderUpdateError) throw senderUpdateError;
+      // Use a transaction for atomic transfer
+      await runTransaction(db, async (transaction) => {
+        const senderRef = doc(db, "profiles", user.id);
+        const receiverRef = doc(db, "profiles", receiverId);
 
-          // Add to receiver
-          const { error: receiverUpdateError } = await supabase
-            .from("profiles")
-            .update({ credit_balance: receiverData.credit_balance + creditAmount })
-            .eq("id", receiverData.id);
-
-          if (receiverUpdateError) {
-            // Rollback sender deduction if receiver update fails
-            await supabase
-              .from("profiles")
-              .update({ credit_balance: user.credit_balance })
-              .eq("id", user.id);
-            throw receiverUpdateError;
-          }
+        const senderSnap = await transaction.get(senderRef);
+        if (!senderSnap.exists()) {
+          throw new Error("Sender profile not found.");
         }
-      }
+
+        const currentSenderBalance = senderSnap.data().credit_balance || 0;
+        
+        if (user.role !== "admin" && currentSenderBalance < creditAmount) {
+          throw new Error("Insufficient credits.");
+        }
+
+        // Deduct from sender (if not admin)
+        if (user.role !== "admin") {
+          transaction.update(senderRef, {
+            credit_balance: currentSenderBalance - creditAmount
+          });
+        }
+
+        // Add to receiver
+        const currentReceiverBalance = receiverData.credit_balance || 0;
+        transaction.update(receiverRef, {
+          credit_balance: currentReceiverBalance + creditAmount
+        });
+
+        // Log transaction
+        const logRef = doc(collection(db, "credit_transactions"));
+        transaction.set(logRef, {
+          sender_id: user.id,
+          receiver_id: receiverId,
+          amount: creditAmount,
+          type: "transfer",
+          timestamp: new Date().toISOString()
+        });
+      });
 
       // Update local user state if not admin
       if (user.role !== "admin") {
@@ -122,13 +113,7 @@ export function SendCreditModal({ isOpen, onClose }: SendCreditModalProps) {
       setAmount("");
     } catch (err: any) {
       console.error("Error sending credits:", err);
-      
-      if (err.message?.includes("function") || err.code === "42883" || err.message?.includes("policy") || err.code === "42501") {
-        setError("Database configuration required for transfers.");
-        setShowSqlFix(true);
-      } else {
-        setError("An error occurred while sending credits.");
-      }
+      setError(err.message || "An error occurred while sending credits.");
     } finally {
       setIsSubmitting(false);
     }
@@ -205,15 +190,6 @@ $$;
                 <AlertCircle className="w-5 h-5 mr-3 flex-shrink-0 mt-0.5" />
                 <p className="text-sm">{error}</p>
               </div>
-              {showSqlFix && (
-                <button
-                  onClick={copySqlFix}
-                  className="mt-3 ml-8 px-3 py-1.5 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 rounded-lg hover:bg-red-200 dark:hover:bg-red-900/60 transition-colors text-xs font-medium flex items-center"
-                >
-                  <Database className="w-3 h-3 mr-1.5" />
-                  Copy SQL Fix
-                </button>
-              )}
             </div>
           )}
 

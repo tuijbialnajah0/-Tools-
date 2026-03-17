@@ -1,5 +1,17 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { supabase } from "../lib/supabase";
+import { 
+  onAuthStateChanged, 
+  signOut, 
+  User as FirebaseUser 
+} from "firebase/auth";
+import { 
+  doc, 
+  getDoc, 
+  setDoc, 
+  onSnapshot,
+  Timestamp
+} from "firebase/firestore";
+import { auth, db } from "../firebase";
 
 export type User = {
   id: string;
@@ -14,9 +26,61 @@ export type User = {
   created_at: string;
 };
 
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId: string | undefined;
+    email: string | null | undefined;
+    emailVerified: boolean | undefined;
+    isAnonymous: boolean | undefined;
+    tenantId: string | null | undefined;
+    providerInfo: {
+      providerId: string;
+      displayName: string | null;
+      email: string | null;
+      photoUrl: string | null;
+    }[];
+  }
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData.map(provider => ({
+        providerId: provider.providerId,
+        displayName: provider.displayName,
+        email: provider.email,
+        photoUrl: provider.photoURL
+      })) || []
+    },
+    operationType,
+    path
+  }
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
+
 type AuthContextType = {
   user: User | null;
   loading: boolean;
+  isAuthReady: boolean;
   login: (user: User) => void;
   logout: () => void;
   updateUser: (user: Partial<User>) => void;
@@ -30,170 +94,81 @@ const ADMIN_EMAILS = [
   "tuijbialnajah0@gmail.com",
   "pintrestk11@gmail.com",
   "kamranaliarts69@gmail.com",
+  "kamronbazoz@gmail.com",
 ];
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isAuthReady, setIsAuthReady] = useState(false);
 
   useEffect(() => {
-    let mounted = true;
-    let loadingTimeout: any;
-
-    // Set a safety timeout to prevent infinite loading
-    loadingTimeout = setTimeout(() => {
-      if (mounted && loading) {
-        console.warn("Auth loading timed out, forcing completion");
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        await fetchProfile(firebaseUser.uid, firebaseUser.email || "");
+      } else {
+        setUser(null);
         setLoading(false);
-      }
-    }, 5000);
-
-    const checkSession = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (mounted) {
-          if (session?.user) {
-            await fetchProfile(session.user.id);
-          } else {
-            setLoading(false);
-          }
-        }
-      } catch (err) {
-        console.error("Error checking session:", err);
-        if (mounted) setLoading(false);
-      }
-    };
-
-    checkSession();
-
-    // Listen for changes on auth state (logged in, signed out, etc.)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (mounted) {
-        if (session?.user) {
-          fetchProfile(session.user.id);
-        } else {
-          setUser(null);
-          setLoading(false);
-        }
+        setIsAuthReady(true);
       }
     });
 
-    // Re-check session when tab becomes visible again
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        checkSession();
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    return () => {
-      mounted = false;
-      clearTimeout(loadingTimeout);
-      subscription.unsubscribe();
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
+    return () => unsubscribe();
   }, []);
 
-  const fetchProfile = async (userId: string) => {
+  const fetchProfile = async (userId: string, email: string) => {
+    const profileRef = doc(db, "profiles", userId);
+    
     try {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", userId)
-        .single();
+      const docSnap = await getDoc(profileRef);
+      
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        const profile = {
+          id: userId,
+          ...data,
+          created_at: data.created_at instanceof Timestamp ? data.created_at.toDate().toISOString() : data.created_at
+        } as User;
 
-      if (error) {
-        if (error.code === "PGRST116") {
-          console.log("Profile missing for user:", userId, "Attempting to create...");
-          // Profile missing - try to create it
-          const { data: { user: authUser }, error: userError } = await supabase.auth.getUser();
-          
-          if (userError) {
-            console.error("Error getting auth user:", userError);
-            throw userError;
-          }
-
-          if (authUser?.email) {
-            const role = ADMIN_EMAILS.includes(authUser.email) ? "admin" : "user";
-
-            console.log("Inserting profile for:", authUser.email, "with role:", role);
-            const { data: newProfile, error: insertError } = await supabase
-              .from("profiles")
-              .insert([{ 
-                id: userId, 
-                email: authUser.email, 
-                role, 
-                credit_balance: 100, 
-                total_spent: 0,
-                avatar_url: `https://api.dicebear.com/7.x/lorelei/svg?seed=${userId}`
-              }])
-              .select()
-              .single();
-
-            if (insertError) {
-              console.error("Failed to create profile in DB:", insertError);
-              // If it's a conflict, it might have been created by the trigger, so try fetching again
-              if (insertError.code === "23505") {
-                console.log("Profile already exists (likely created by trigger), fetching again...");
-                return fetchProfile(userId);
-              }
-              throw insertError;
-            }
-
-            if (newProfile) {
-              console.log("Successfully created profile in DB:", newProfile);
-              setUser(newProfile as User);
-              return;
-            }
-          } else {
-            console.error("Auth user has no email, cannot create profile");
-          }
+        // Force admin role if email is in the list
+        if (ADMIN_EMAILS.includes(profile.email) && profile.role !== "admin") {
+          profile.role = "admin";
         }
-        throw error;
-      }
-
-      // Force admin role if email is in the list, even if DB says otherwise
-      const profile = data as User;
-      if (ADMIN_EMAILS.includes(profile.email) && profile.role !== "admin") {
-        profile.role = "admin";
-      }
-
-      setUser(profile);
-    } catch (error: any) {
-      console.error("AuthContext Error:", error);
-
-      // Fallback: If we have an auth session but profile fetch failed,
-      // set a minimal user object so they aren't stuck on the login page.
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        console.warn("Using fallback user profile due to fetch error");
-        const email = session.user.email || "";
+        setUser(profile);
+      } else {
+        // Create profile if it doesn't exist
         const role = ADMIN_EMAILS.includes(email) ? "admin" : "user";
-        setUser({
-          id: session.user.id,
-          email,
+        const newProfile: User = {
+          id: userId,
+          email: email,
           username: null,
           age: null,
           gender: null,
-          avatar_url: `https://api.dicebear.com/7.x/lorelei/svg?seed=${session.user.id}`,
+          avatar_url: `https://api.dicebear.com/7.x/lorelei/svg?seed=${userId}`,
           role,
-          credit_balance: 0,
+          credit_balance: 100,
           total_spent: 0,
-          created_at: new Date().toISOString(),
+          created_at: new Date().toISOString()
+        };
+
+        await setDoc(profileRef, {
+          ...newProfile,
+          created_at: Timestamp.now()
         });
-      } else {
-        setUser(null);
+        setUser(newProfile);
       }
+    } catch (error) {
+      handleFirestoreError(error, OperationType.GET, `profiles/${userId}`);
     } finally {
       setLoading(false);
+      setIsAuthReady(true);
     }
   };
 
   const login = (userData: User) => setUser(userData);
   
   const logout = async () => {
-    await supabase.auth.signOut();
+    await signOut(auth);
     setUser(null);
   };
 
@@ -202,7 +177,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, updateUser }}>
+    <AuthContext.Provider value={{ user, loading, isAuthReady, login, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

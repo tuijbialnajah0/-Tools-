@@ -17,7 +17,9 @@ import {
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { supabase } from "../lib/supabase";
+import { collection, query, where, getDocs, limit } from "firebase/firestore";
+import { db } from "../firebase";
+import { executeTool } from "../lib/toolService";
 import { removeBackground } from "@imgly/background-removal";
 
 export function BackgroundRemover() {
@@ -34,7 +36,7 @@ export function BackgroundRemover() {
   const [bgColor, setBgColor] = useState("#ffffff");
   const [bgGradient, setBgGradient] = useState("linear-gradient(135deg, #667eea 0%, #764ba2 100%)");
   const [blurAmount, setBlurAmount] = useState(10);
-  const [toolId, setToolId] = useState<number | null>(null);
+  const [toolId, setToolId] = useState<string | null>(null);
   const [creditCost, setCreditCost] = useState<number>(10);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -42,18 +44,20 @@ export function BackgroundRemover() {
 
   useEffect(() => {
     const fetchToolData = async () => {
-      const { data, error } = await supabase
-        .from("tools")
-        .select("id, credit_cost")
-        .ilike("tool_name", "%Background%Remover%")
-        .limit(1)
-        .maybeSingle();
-      
-      if (data) {
-        setToolId(data.id);
-        if (data.credit_cost !== undefined) {
-          setCreditCost(data.credit_cost);
+      try {
+        const toolsRef = collection(db, "tools");
+        const q = query(toolsRef, where("tool_name", "==", "Background Remover"), limit(1));
+        const querySnapshot = await getDocs(q);
+        
+        if (!querySnapshot.empty) {
+          const doc = querySnapshot.docs[0];
+          setToolId(doc.id);
+          if (doc.data().credit_cost !== undefined) {
+            setCreditCost(doc.data().credit_cost);
+          }
         }
+      } catch (err) {
+        console.error("Error fetching tool data:", err);
       }
     };
     fetchToolData();
@@ -159,11 +163,9 @@ export function BackgroundRemover() {
       }
 
       // Deduct credits after successful processing
-      const { data: rpcData, error: rpcError } = await supabase.rpc("execute_tool", {
-        p_tool_id: toolId || 1, 
-      });
-
-      if (rpcError) throw rpcError;
+      if (toolId && user) {
+        await executeTool(user.id, toolId);
+      }
 
       // Update local user state if not admin
       if (user && !isAdmin) {

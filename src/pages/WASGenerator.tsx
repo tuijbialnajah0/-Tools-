@@ -2,7 +2,9 @@ import React, { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import { Link } from "react-router-dom";
 import { ChevronLeft, Search, Download, AlertCircle, CheckCircle2, Loader2, Package, Check, X } from "lucide-react";
-import { supabase } from "../lib/supabase";
+import { db } from "../firebase";
+import { collection, query, where, getDocs } from "firebase/firestore";
+import { executeTool } from "../lib/toolService";
 import JSZip from "jszip";
 
 interface ImageData {
@@ -47,16 +49,21 @@ export function WASGenerator() {
   useEffect(() => {
     const fetchToolData = async () => {
       try {
-        // Use ilike and limit 1 to be more resilient to name variations or duplicates
-        const { data } = await supabase
-          .from("tools")
-          .select("id, credit_cost")
-          .ilike("tool_name", "WA ~ S generator")
-          .limit(1)
-          .maybeSingle();
+        const toolsRef = collection(db, "tools");
+        const q = query(
+          toolsRef, 
+          where("enabled", "==", true)
+        );
+        const querySnapshot = await getDocs(q);
+        
+        const toolDoc = querySnapshot.docs.find(doc => {
+          const name = doc.data().tool_name || "";
+          return name.toLowerCase().includes("wa ~ s generator");
+        });
           
-        if (data) {
-          setToolId(data.id);
+        if (toolDoc) {
+          setToolId(toolDoc.id as any);
+          const data = toolDoc.data();
           if (data.credit_cost !== null && data.credit_cost !== undefined) {
             setCreditCost(data.credit_cost);
           }
@@ -500,15 +507,11 @@ export function WASGenerator() {
         setProgress(Math.round(((i + chunk.length) / finalImages.length) * 100));
       }
 
-      const { error: updateError } = await supabase
-        .from("profiles")
-        .update({ 
-          credit_balance: user!.credit_balance - creditCost,
-          total_spent: (user!.total_spent || 0) + creditCost
-        })
-        .eq("id", user!.id);
-
-      if (updateError) throw updateError;
+      const success = await executeTool(user!.id, toolId?.toString() || "wa-s-generator", creditCost);
+      
+      if (!success) {
+        throw new Error("Failed to deduct credits. Please check your balance.");
+      }
       
       updateUser({ 
         credit_balance: user!.credit_balance - creditCost,

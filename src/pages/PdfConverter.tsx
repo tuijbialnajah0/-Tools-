@@ -2,7 +2,9 @@ import React, { useState, useRef, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import { Link } from "react-router-dom";
 import { ChevronLeft, Upload, CheckCircle2, AlertCircle, Download, FileImage, X, ChevronUp, ChevronDown } from "lucide-react";
-import { supabase } from "../lib/supabase";
+import { collection, query, where, getDocs, limit } from "firebase/firestore";
+import { db } from "../firebase";
+import { executeTool } from "../lib/toolService";
 import { jsPDF } from "jspdf";
 
 const MAX_FILE_SIZE = 250 * 1024 * 1024; // 250MB per file
@@ -22,23 +24,26 @@ export function PdfConverter() {
   const [resultFileName, setResultFileName] = useState<string>("");
   const [compressedResultFileName, setCompressedResultFileName] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
-  const [toolId, setToolId] = useState<number | null>(null);
+  const [toolId, setToolId] = useState<string | null>(null);
   const [creditCost, setCreditCost] = useState<number>(5);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const fetchToolData = async () => {
-      const { data } = await supabase
-        .from("tools")
-        .select("id, credit_cost")
-        .ilike("tool_name", "%PDF%Converter%")
-        .limit(1)
-        .maybeSingle();
-      if (data) {
-        setToolId(data.id);
-        if (data.credit_cost !== undefined) {
-          setCreditCost(data.credit_cost);
+      try {
+        const toolsRef = collection(db, "tools");
+        const q = query(toolsRef, where("tool_name", "==", "Image to PDF Converter"), limit(1));
+        const querySnapshot = await getDocs(q);
+        
+        if (!querySnapshot.empty) {
+          const doc = querySnapshot.docs[0];
+          setToolId(doc.id);
+          if (doc.data().credit_cost !== undefined) {
+            setCreditCost(doc.data().credit_cost);
+          }
         }
+      } catch (err) {
+        console.error("Error fetching tool data:", err);
       }
     };
     fetchToolData();
@@ -234,12 +239,8 @@ export function PdfConverter() {
       if (!resultBlobs) throw new Error("Conversion failed to produce a file.");
 
       // Deduct credits after successful processing
-      const timesToCharge = Math.ceil(creditCost / 5);
-      for (let i = 0; i < timesToCharge; i++) {
-        const { error: rpcError } = await supabase.rpc("execute_tool", {
-          p_tool_id: toolId || 3, // Fallback ID if not found
-        });
-        if (rpcError) throw rpcError;
+      if (toolId && user) {
+        await executeTool(user.id, toolId, creditCost);
       }
 
       // Update local user state if not admin

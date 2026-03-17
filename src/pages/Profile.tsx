@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
-import { supabase } from "../lib/supabase";
+import { doc, updateDoc, getDocs, collection, query, where } from "firebase/firestore";
+import { db } from "../firebase";
 import { User as UserIcon, Save, CheckCircle2, AlertCircle, Sparkles, Trophy, Star, Zap, X, ChevronRight } from "lucide-react";
 import { calculateExp, getRank, getNextRank, RANKS } from "../lib/ranks";
 
@@ -43,22 +44,24 @@ export function Profile() {
     setMessage(null);
 
     try {
-      const { error } = await supabase
-        .from("profiles")
-        .update({
-          username: username.trim() || null,
-          age: age ? parseInt(age, 10) : null,
-          gender: gender,
-          avatar_url: selectedAvatar,
-        })
-        .eq("id", user.id);
-
-      if (error) {
-        if (error.code === "23505") {
+      // Check if username is taken
+      if (username.trim() && username.trim() !== user.username) {
+        const profilesRef = collection(db, "profiles");
+        const q = query(profilesRef, where("username", "==", username.trim()));
+        const querySnapshot = await getDocs(q);
+        
+        if (!querySnapshot.empty) {
           throw new Error("Username is already taken. Please choose another one.");
         }
-        throw error;
       }
+
+      const profileRef = doc(db, "profiles", user.id);
+      await updateDoc(profileRef, {
+        username: username.trim() || null,
+        age: age ? parseInt(age, 10) : null,
+        gender: gender,
+        avatar_url: selectedAvatar,
+      });
 
       updateUser({
         username: username.trim() || null,

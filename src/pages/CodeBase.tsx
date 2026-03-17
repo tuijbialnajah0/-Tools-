@@ -13,7 +13,9 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { supabase } from "../lib/supabase";
+import { collection, query, where, getDocs, limit } from "firebase/firestore";
+import { db } from "../firebase";
+import { executeTool } from "../lib/toolService";
 import ReactMarkdown from "react-markdown";
 import { GoogleGenAI } from "@google/genai";
 
@@ -29,23 +31,27 @@ export function CodeBase() {
   const [input, setInput] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [toolId, setToolId] = useState<number | null>(null);
+  const [toolId, setToolId] = useState<string | null>(null);
   const [creditCost, setCreditCost] = useState(10);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const fetchToolId = async () => {
-      const { data } = await supabase
-        .from("tools")
-        .select("id, credit_cost")
-        .ilike("tool_name", "%Code%base%")
-        .limit(1)
-        .maybeSingle();
-      
-      if (data) {
-        setToolId(data.id);
-        setCreditCost(data.credit_cost);
+      try {
+        const toolsRef = collection(db, "tools");
+        const q = query(toolsRef, where("tool_name", "==", "Code base"), limit(1));
+        const querySnapshot = await getDocs(q);
+        
+        if (!querySnapshot.empty) {
+          const doc = querySnapshot.docs[0];
+          setToolId(doc.id);
+          if (doc.data().credit_cost !== undefined) {
+            setCreditCost(doc.data().credit_cost);
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching tool data:", err);
       }
     };
     fetchToolId();
@@ -79,12 +85,8 @@ export function CodeBase() {
 
     try {
       // Deduct credits
-      const { error: rpcError } = await supabase.rpc("execute_tool", {
-        p_tool_id: toolId || 0,
-      });
-
-      if (rpcError) {
-        console.error("Credit deduction error:", rpcError);
+      if (toolId && user) {
+        await executeTool(user.id, toolId, creditCost);
       }
 
       if (user && !isAdmin) {
@@ -95,7 +97,7 @@ export function CodeBase() {
       }
 
       // Initialize Gemini
-      const ai = new GoogleGenAI({ apiKey: "AIzaSyA2i5HjN8QweP8JXu904q0uHzLMoUKelr0" });
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
       
       // Prepare context for Gemini
       const conversationHistory = messages.map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n\n');

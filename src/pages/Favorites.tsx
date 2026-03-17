@@ -2,10 +2,11 @@ import React, { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import { Play, Heart, RotateCw, ChevronLeft } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
-import { supabase } from "../lib/supabase";
+import { db } from "../firebase";
+import { collection, getDocs, doc, deleteDoc, getDoc } from "firebase/firestore";
 
 type Tool = {
-  id: number;
+  id: string;
   tool_name: string;
   description: string;
   credit_cost: number;
@@ -23,16 +24,29 @@ export function Favorites() {
     if (!user) return;
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from("favorites")
-        .select("tool_id, tools(*)")
-        .eq("user_id", user.id);
+      const favoritesRef = collection(db, "profiles", user.id, "favorites");
+      const favoritesSnap = await getDocs(favoritesRef);
       
-      if (error) throw error;
+      const toolsList: Tool[] = [];
       
-      if (data) {
-        setFavoriteTools(data.map((f: any) => f.tools).filter(Boolean));
+      for (const favoriteDoc of favoritesSnap.docs) {
+        const toolId = favoriteDoc.id;
+        const toolRef = doc(db, "tools", toolId);
+        const toolSnap = await getDoc(toolRef);
+        
+        if (toolSnap.exists()) {
+          const data = toolSnap.data();
+          toolsList.push({
+            id: toolSnap.id,
+            tool_name: data.tool_name || "",
+            description: data.description || "",
+            credit_cost: data.credit_cost || 0,
+            category: data.category || "General"
+          });
+        }
       }
+      
+      setFavoriteTools(toolsList);
     } catch (err: any) {
       console.error("Error fetching favorites:", err);
       setError("Failed to load favorites.");
@@ -45,18 +59,13 @@ export function Favorites() {
     fetchFavorites();
   }, [user?.id]);
 
-  const toggleFavorite = async (e: React.MouseEvent, toolId: number) => {
+  const toggleFavorite = async (e: React.MouseEvent, toolId: string) => {
     e.stopPropagation();
     if (!user) return;
 
     try {
-      const { error } = await supabase
-        .from("favorites")
-        .delete()
-        .eq("user_id", user.id)
-        .eq("tool_id", toolId);
-      
-      if (error) throw error;
+      const favoriteRef = doc(db, "profiles", user.id, "favorites", toolId);
+      await deleteDoc(favoriteRef);
       setFavoriteTools(prev => prev.filter(t => t.id !== toolId));
     } catch (err) {
       console.error("Error removing favorite:", err);

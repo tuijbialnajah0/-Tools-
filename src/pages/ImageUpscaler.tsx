@@ -16,7 +16,9 @@ import {
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { supabase } from "../lib/supabase";
+import { collection, query, where, getDocs, limit } from "firebase/firestore";
+import { db } from "../firebase";
+import { executeTool } from "../lib/toolService";
 
 export function ImageUpscaler() {
   const { user, updateUser } = useAuth();
@@ -29,7 +31,7 @@ export function ImageUpscaler() {
   const [scale, setScale] = useState<2 | 4 | 8>(2);
   const [sliderPosition, setSliderPosition] = useState(50);
   const [originalRes, setOriginalRes] = useState<{ w: number; h: number } | null>(null);
-  const [toolId, setToolId] = useState<number | null>(null);
+  const [toolId, setToolId] = useState<string | null>(null);
   const [creditCost, setCreditCost] = useState<number>(10);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -37,20 +39,22 @@ export function ImageUpscaler() {
 
   useEffect(() => {
     const fetchToolData = async () => {
-      const { data, error } = await supabase
-        .from("tools")
-        .select("id, credit_cost")
-        .ilike("tool_name", "%Image%Upscaler%")
-        .limit(1)
-        .maybeSingle();
-      
-      if (data) {
-        setToolId(data.id);
-        if (data.credit_cost !== undefined) {
-          setCreditCost(data.credit_cost);
+      try {
+        const toolsRef = collection(db, "tools");
+        const q = query(toolsRef, where("tool_name", "==", "Image Upscaler"), limit(1));
+        const querySnapshot = await getDocs(q);
+        
+        if (!querySnapshot.empty) {
+          const doc = querySnapshot.docs[0];
+          setToolId(doc.id);
+          if (doc.data().credit_cost !== undefined) {
+            setCreditCost(doc.data().credit_cost);
+          }
+        } else {
+          console.log("Tool 'Image Upscaler' not found in database.");
         }
-      } else {
-        console.log("Tool 'Image Upscaler' not found in database.");
+      } catch (err) {
+        console.error("Error fetching tool data:", err);
       }
     };
     fetchToolData();
@@ -159,13 +163,8 @@ export function ImageUpscaler() {
       const upscaledDataUrl = currentCanvas.toDataURL('image/png', 1.0);
 
       // Deduct credits after successful processing
-      const { data: rpcData, error: rpcError } = await supabase.rpc("execute_tool", {
-        p_tool_id: toolId || 0, // Fallback to 0 if not found, though ideally it should be found
-      });
-
-      if (rpcError) {
-        console.error("Credit deduction error:", rpcError);
-        // We still show the result but log the error
+      if (toolId && user) {
+        await executeTool(user.id, toolId);
       }
 
       // Update local user state if not admin
