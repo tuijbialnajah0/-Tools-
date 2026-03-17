@@ -1,9 +1,7 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useTools } from "../context/ToolContext";
-import { useTheme, themes } from "../context/ThemeContext";
-import { AnimatedBackground } from "./AnimatedBackground";
 import { ToolManager } from "./ToolManager";
 import {
   User,
@@ -49,6 +47,8 @@ const TOOL_ICONS: Record<string, any> = {
   'pdf-converter': FileText,
   'whatsapp-s-create': MessageCircle,
   'whatsapp-s-create-video': Video,
+  'ide-tool': LayoutDashboard,
+  'html-viewer': FileCode,
 };
 
 export function Layout() {
@@ -56,10 +56,9 @@ export function Layout() {
   const { runningTools, removeTool } = useTools();
   const location = useLocation();
   const navigate = useNavigate();
-  const { theme, setTheme } = useTheme();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSendCreditModalOpen, setIsSendCreditModalOpen] = useState(false);
-  const [showThemeSelector, setShowThemeSelector] = useState(false);
+  const [favoriteTools, setFavoriteTools] = useState<any[]>([]);
   const [isDarkMode, setIsDarkMode] = useState(() => {
     if (typeof window !== "undefined") {
       return (
@@ -80,6 +79,48 @@ export function Layout() {
       localStorage.setItem("theme", "light");
     }
   }, [isDarkMode]);
+
+  useEffect(() => {
+    const fetchFavorites = async () => {
+      if (!user) return;
+      try {
+        const { data, error } = await supabase
+          .from("favorites")
+          .select("tool_id, tools(*)")
+          .eq("user_id", user.id);
+        
+        if (error) {
+          console.warn("Favorites fetch error:", error);
+          return;
+        }
+        
+        if (data) {
+          setFavoriteTools(data.map(f => f.tools).filter(Boolean));
+        }
+      } catch (err) {
+        console.error("Error fetching favorites:", err);
+      }
+    };
+
+    fetchFavorites();
+    
+    // Set up real-time subscription for favorites
+    const channel = supabase
+      .channel('favorites-changes')
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'favorites',
+        filter: `user_id=eq.${user?.id}`
+      }, () => {
+        fetchFavorites();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id]);
 
   const toggleTheme = () => setIsDarkMode(!isDarkMode);
 
@@ -110,7 +151,6 @@ export function Layout() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col md:flex-row transition-colors duration-300">
-      <AnimatedBackground />
       {/* Mobile Header */}
       <header className="md:hidden h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-4 sticky top-0 z-50">
         <div className="flex items-center">
@@ -240,6 +280,64 @@ export function Layout() {
             </>
           )}
 
+          {/* Favorite Tools */}
+          {favoriteTools.length > 0 && (
+            <>
+              <div className="pt-6 pb-2">
+                <p className="px-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center">
+                  <Heart className="w-3 h-3 mr-1.5 text-rose-500 fill-rose-500" />
+                  Favorites
+                </p>
+              </div>
+              {favoriteTools.map((tool) => {
+                const toolName = tool.tool_name.trim();
+                const explicitMappings: Record<string, string> = {
+                  "Background Remover": "background-remover",
+                  "Whatsapp-S-Create": "whatsapp-s-create",
+                  "Image Upscaler": "image-upscaler",
+                  "Image Colorizer": "image-colorizer",
+                  "QR Code Generator": "qr-code-generator",
+                  "Smart Code Generator": "smart-code-generator",
+                  "Code base": "code-base",
+                  "Pdf Converter": "pdf-converter",
+                  "Whatsapp-S-Create Video": "whatsapp-s-create-video",
+                  "Integrated Development Environment (IDE)": "ide-tool",
+                  "IDE Tool": "ide-tool",
+                  "Image Dataset Collector": "image-dataset-collector",
+                  "WA ~ S generator": "wa-s-generator",
+                  "PFP Anima": "pfp-anima",
+                  "Html viewer": "html-viewer"
+                };
+                
+                const path = explicitMappings[toolName] || toolName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+                const isActive = location.pathname === `/${path}`;
+                const Icon = TOOL_ICONS[path] || Wrench;
+                
+                return (
+                  <Link
+                    key={tool.id}
+                    to={`/${path}`}
+                    onClick={closeSidebar}
+                    className={cn(
+                      "flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors",
+                      isActive
+                        ? "bg-rose-50 dark:bg-rose-900/20 text-rose-700 dark:text-rose-400"
+                        : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800",
+                    )}
+                  >
+                    <Icon
+                      className={cn(
+                        "w-5 h-5 mr-3",
+                        isActive ? "text-rose-600 dark:text-rose-400" : "text-slate-400 dark:text-slate-500",
+                      )}
+                    />
+                    <span className="truncate">{tool.tool_name}</span>
+                  </Link>
+                );
+              })}
+            </>
+          )}
+
           {user?.role === "admin" && (
             <>
               <div className="pt-6 pb-2">
@@ -272,42 +370,6 @@ export function Layout() {
                 );
               })}
             </>
-          )}
-
-          <div className="pt-6 pb-2">
-            <p className="px-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-              Customization
-            </p>
-          </div>
-          <button
-            onClick={() => setShowThemeSelector(!showThemeSelector)}
-            className="w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
-          >
-            <Palette className="w-5 h-5 mr-3 text-slate-400 dark:text-slate-500" />
-            Website Theme
-          </button>
-
-          {showThemeSelector && (
-            <div className="px-3 py-2 grid grid-cols-5 gap-2 animate-in fade-in slide-in-from-top-2 duration-200">
-              {themes.map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => setTheme(t.id)}
-                  title={t.name}
-                  className={cn(
-                    "w-8 h-8 rounded-full border-2 transition-all relative overflow-hidden",
-                    theme === t.id ? "border-indigo-600 scale-110 shadow-lg" : "border-transparent hover:scale-105"
-                  )}
-                  style={{ backgroundColor: t.color }}
-                >
-                  {t.isAnimated && (
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <Activity className="w-3 h-3 text-white/50" />
-                    </div>
-                  )}
-                </button>
-              ))}
-            </div>
           )}
 
           <div className="pt-6 pb-2">

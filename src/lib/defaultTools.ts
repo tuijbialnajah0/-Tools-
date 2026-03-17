@@ -10,9 +10,11 @@ export const DEFAULT_TOOLS = [
   { tool_name: "Background Remover", description: "Remove backgrounds from images instantly. [STATUS:working]", credit_cost: 10, category: "Image Processing", enabled: true },
   { tool_name: "Image Upscaler", description: "Enhance image resolution and quality. [STATUS:working]", credit_cost: 20, category: "Image Processing", enabled: true },
   { tool_name: "Pdf Converter", description: "Convert images and documents to PDF format. [STATUS:working]", credit_cost: 15, category: "Utilities", enabled: true },
+  { tool_name: "Integrated Development Environment (IDE)", description: "A complete browser-based IDE for HTML, CSS, and JavaScript with live preview. [STATUS:working]", credit_cost: 0, category: "Developer Tools", enabled: true },
   { tool_name: "Image Dataset Collector", description: "Search and download large image datasets from multiple public sources. [STATUS:working]", credit_cost: 20, category: "Utilities", enabled: true },
   { tool_name: "WA ~ S generator", description: "Search images and automatically generate WhatsApp sticker packs. [STATUS:working]", credit_cost: 1500, category: "Utilities", enabled: true },
-  { tool_name: "PFP Anima", description: "Browse and download high-quality anime profile pictures and wallpapers. [STATUS:working]", credit_cost: 100, category: "Utilities", enabled: true }
+  { tool_name: "PFP Anima", description: "Browse and download high-quality anime profile pictures and wallpapers. [STATUS:working]", credit_cost: 100, category: "Utilities", enabled: true },
+  { tool_name: "Html viewer", description: "View and run HTML code with live preview and file support. [STATUS:working]", credit_cost: 0, category: "Developer Tools", enabled: true }
 ];
 
 let isSyncing = false;

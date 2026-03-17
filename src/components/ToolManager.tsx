@@ -12,9 +12,11 @@ import { CodeBase } from "../pages/CodeBase";
 import { PdfConverter } from "../pages/PdfConverter";
 import { WhatsappSCreate } from "../pages/WhatsappSCreate";
 import { WhatsappSCreateVideo } from "../pages/WhatsappSCreateVideo";
+import { IDETool } from "../pages/IDETool";
 import { ImageDatasetCollector } from "../pages/ImageDatasetCollector";
 import { WASGenerator } from "../pages/WASGenerator";
 import { PFPAnima } from "../pages/PFPAnima";
+import { HtmlViewer } from "../pages/HtmlViewer";
 
 const TOOL_COMPONENTS: Record<string, React.ComponentType> = {
   'background-remover': BackgroundRemover,
@@ -26,9 +28,11 @@ const TOOL_COMPONENTS: Record<string, React.ComponentType> = {
   'pdf-converter': PdfConverter,
   'whatsapp-s-create': WhatsappSCreate,
   'whatsapp-s-create-video': WhatsappSCreateVideo,
+  'ide-tool': IDETool,
   'image-dataset-collector': ImageDatasetCollector,
   'wa-s-generator': WASGenerator,
   'pfp-anima': PFPAnima,
+  'html-viewer': HtmlViewer,
 };
 
 export function ToolManager() {

@@ -95,7 +95,7 @@ export function CodeBase() {
       }
 
       // Initialize Gemini
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const ai = new GoogleGenAI({ apiKey: "AIzaSyA2i5HjN8QweP8JXu904q0uHzLMoUKelr0" });
       
       // Prepare context for Gemini
       const conversationHistory = messages.map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n\n');

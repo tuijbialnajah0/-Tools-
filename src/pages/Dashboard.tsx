@@ -3,7 +3,7 @@ import { useAuth } from "../context/AuthContext";
 import { Play, CheckCircle2, Settings, Heart, RotateCw } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
-import { syncDefaultTools, DEFAULT_TOOLS } from "../lib/defaultTools";
+import { syncDefaultTools } from "../lib/defaultTools";
 
 type Tool = {
   id: number;
@@ -29,31 +29,17 @@ export function Dashboard() {
       if (forceSync) setSyncing(true);
       
       // Sync default tools first to ensure they exist in the database
-      // Add a timeout so it doesn't hang the dashboard if Supabase is slow
-      try {
-        await Promise.race([
-          syncDefaultTools(forceSync),
-          new Promise(resolve => setTimeout(resolve, 3000))
-        ]);
-      } catch (syncErr) {
-        console.warn("Sync default tools failed or timed out:", syncErr);
-      }
+      await syncDefaultTools(forceSync);
       
-      const fetchPromise = Promise.allSettled([
+      const [toolsRes, favoritesRes] = await Promise.allSettled([
         supabase.from("tools").select("*").eq("enabled", true),
         user ? supabase.from("favorites").select("tool_id").eq("user_id", user.id) : Promise.resolve({ data: [], error: null })
       ]);
-
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error("Fetch timeout")), 15000)
-      );
-
-      const [toolsRes, favoritesRes] = await Promise.race([fetchPromise, timeoutPromise]) as any;
       
       if (toolsRes.status === 'fulfilled' && toolsRes.value.data) {
         // Filter out duplicates by tool_name (case-insensitive)
         const seenNames = new Set<string>();
-        const uniqueTools = toolsRes.value.data.filter((tool: Tool) => {
+        const uniqueTools = toolsRes.value.data.filter(tool => {
           const normalizedName = tool.tool_name.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
           if (seenNames.has(normalizedName)) {
             return false;
@@ -62,15 +48,8 @@ export function Dashboard() {
           return true;
         });
         setTools(uniqueTools);
-        setError(null); // Clear error if tools are loaded
       } else if (toolsRes.status === 'rejected' || (toolsRes.status === 'fulfilled' && toolsRes.value.error)) {
-        const fetchError = toolsRes.status === 'fulfilled' ? toolsRes.value.error : toolsRes.reason;
-        console.error("Tools fetch error:", fetchError);
-        
-        // If we have some tools already (from previous load), don't show error
-        if (tools.length === 0) {
-          throw fetchError;
-        }
+        throw (toolsRes.status === 'fulfilled' ? toolsRes.value.error : toolsRes.reason);
       }
 
       if (favoritesRes.status === 'fulfilled' && favoritesRes.value.data) {
@@ -80,26 +59,7 @@ export function Dashboard() {
       }
     } catch (err: any) {
       console.error("Error fetching data:", err);
-      
-      // Fallback to default tools if database fetch fails
-      if (tools.length === 0) {
-        console.warn("Falling back to default tools due to fetch error");
-        const fallbackTools = DEFAULT_TOOLS.map((t, index) => ({
-          id: -(index + 1), // Negative IDs for fallback tools
-          ...t
-        }));
-        setTools(fallbackTools);
-        setError("Note: Using offline tool list. Some features may be limited.");
-      } else {
-        const message = err.message || "Unknown error";
-        if (message.includes("timeout")) {
-          setError("Connection timed out. Please check your internet and try again.");
-        } else if (message.includes("JWT")) {
-          setError("Your session has expired. Please log in again.");
-        } else {
-          setError("Failed to load tools. Please try again later.");
-        }
-      }
+      setError("Failed to load tools. Please try again later.");
     } finally {
       setLoadingTools(false);
       setSyncing(false);
@@ -157,9 +117,12 @@ export function Dashboard() {
       "Code base": "/code-base",
       "Pdf Converter": "/pdf-converter",
       "Whatsapp-S-Create Video": "/whatsapp-s-create-video",
+      "Integrated Development Environment (IDE)": "/ide-tool",
+      "IDE Tool": "/ide-tool",
       "Image Dataset Collector": "/image-dataset-collector",
       "WA ~ S generator": "/wa-s-generator",
-      "PFP Anima": "/pfp-anima"
+      "PFP Anima": "/pfp-anima",
+      "Html viewer": "/html-viewer"
     };
 
     if (explicitMappings[toolName]) {
@@ -228,17 +191,8 @@ export function Dashboard() {
       </div>
 
       {error && (
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg flex items-center justify-between">
-          <div className="flex items-center">
-            <span className="mr-2">⚠️</span>
-            {error}
-          </div>
-          <button 
-            onClick={() => fetchData(true)}
-            className="text-sm font-bold underline hover:no-underline"
-          >
-            Retry
-          </button>
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+          {error}
         </div>
       )}
 
@@ -333,9 +287,8 @@ function ToolCard({
 }: { 
   tool: Tool; 
   isFavorite: boolean; 
-  onToggleFavorite: (e: React.MouseEvent, id: number) => void | Promise<void>; 
+  onToggleFavorite: (e: React.MouseEvent, id: number) => void; 
   onExecute: (tool: Tool) => void;
-  key?: React.Key;
 }) {
   const statusMatch = tool.description.match(/\[STATUS:(working|development)\]/);
   const status = statusMatch ? statusMatch[1] : 'working';
