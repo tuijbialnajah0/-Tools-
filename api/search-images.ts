@@ -39,8 +39,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const fetchWithProxy = async (url: string, options: any, validate?: (text: string) => boolean) => {
       const proxies = [
-        '', // Direct
-        'https://api.allorigins.win/raw?url='
+        '' // Direct
       ];
 
       let lastResponse: any = null;
@@ -72,6 +71,38 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       }
       return lastResponse || { ok: false, status: 500, text: async () => "", json: async () => ({}) };
+    };
+
+    // Helper to fetch from Yandex
+    const fetchFromYandex = async () => {
+      const yandexUrl = `https://yandex.com/images/search?text=${encodeURIComponent(query)}&p=${Math.floor(start/30)}`;
+      const yandexRes = await fetchWithProxy(yandexUrl, { headers });
+      
+      if (!yandexRes.ok) throw new Error(`Yandex search failed (Status: ${yandexRes.status})`);
+      
+      const html = await yandexRes.text();
+      const items = [...html.matchAll(/&quot;img_href&quot;:&quot;([^&]+)&quot;/gi)];
+      const thumbs = [...html.matchAll(/&quot;image&quot;:&quot;((?:[^&]|&amp;)+)&quot;/gi)];
+      
+      const images = items.map((m, i) => {
+        try {
+          const thumb = thumbs[i] ? thumbs[i][1].replace(/&amp;/g, '&') : m[1];
+          return {
+            image: m[1],
+            title: query,
+            source: 'Yandex',
+            thumbnail: thumb.startsWith('//') ? `https:${thumb}` : thumb
+          };
+        } catch (e) {
+          return null;
+        }
+      }).filter(Boolean);
+      
+      if (images.length === 0) {
+        throw new Error(`No images found on Yandex.`);
+      }
+      
+      return images;
     };
 
     // Helper to fetch from Bing
@@ -127,12 +158,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     
     if (!vqdMatch) {
-      console.warn("VQD not found, falling back to Bing");
+      console.warn("VQD not found, falling back to Yandex/Bing");
       try {
-        const results = await fetchFromBing();
-        return res.json({ data: { results }, source: 'bing' });
-      } catch (e: any) {
-        throw new Error(`All search methods failed. Last error: ${e.message}`);
+        const results = await fetchFromYandex();
+        return res.json({ data: { results }, source: 'yandex' });
+      } catch (e1: any) {
+        try {
+          const results = await fetchFromBing();
+          return res.json({ data: { results }, source: 'bing' });
+        } catch (e2: any) {
+          throw new Error(`All search methods failed. Yandex: ${e1.message}, Bing: ${e2.message}`);
+        }
       }
     }
 
@@ -142,12 +178,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const apiRes = await fetchWithProxy(apiUrl, { headers: ddgHeaders });
     
     if (!apiRes.ok) {
-      console.warn(`API search failed (Status: ${apiRes.status}), falling back to Bing`);
+      console.warn(`API search failed (Status: ${apiRes.status}), falling back to Yandex/Bing`);
       try {
-        const results = await fetchFromBing();
-        return res.json({ data: { results }, source: 'bing' });
-      } catch (e: any) {
-        throw new Error(`All search methods failed. Last error: ${e.message}`);
+        const results = await fetchFromYandex();
+        return res.json({ data: { results }, source: 'yandex' });
+      } catch (e1: any) {
+        try {
+          const results = await fetchFromBing();
+          return res.json({ data: { results }, source: 'bing' });
+        } catch (e2: any) {
+          throw new Error(`All search methods failed. Yandex: ${e1.message}, Bing: ${e2.message}`);
+        }
       }
     }
 
