@@ -24,14 +24,22 @@
 
 /* Animated Themes Primary Colors */
 .theme-petals { --theme-primary: #fda4af; --theme-primary-hover: #fb7185; }
-.theme-constellation { --theme-primary: #6366f1; --theme-primary-hover: #4f46e5; }
-.theme-water { --theme-primary: #3b82f6; --theme-primary-hover: #2563eb; }
-.theme-snow { --theme-primary: #94a3b8; --theme-primary-hover: #64748b; }
-.theme-matrix { --theme-primary: #22c55e; --theme-primary-hover: #16a34a; }
-.theme-fireflies { --theme-primary: #eab308; --theme-primary-hover: #ca8a04; }
-.theme-stars { --theme-primary: #fde047; --theme-primary-hover: #eab308; }
-.theme-bubbles { --theme-primary: #60a5fa; --theme-primary-hover: #3b82f6; }
-.theme-confetti { --theme-primary: #ec4899; --theme-primary-hover: #db2777; }
+.theme-sakura { --theme-primary: #f9a8d4; --theme-primary-hover: #f472b6; }
+.theme-dandelions { --theme-primary: #fef08a; --theme-primary-hover: #fde047; }
+.theme-feathers { --theme-primary: #e2e8f0; --theme-primary-hover: #cbd5e1; }
+.theme-hearts { --theme-primary: #fb7185; --theme-primary-hover: #f43f5e; }
+.theme-lanterns { --theme-primary: #fbbf24; --theme-primary-hover: #f59e0b; }
+.theme-clouds { --theme-primary: #bae6fd; --theme-primary-hover: #7dd3fc; }
+.theme-maple { --theme-primary: #f97316; --theme-primary-hover: #ea580c; }
+.theme-lotus { --theme-primary: #d8b4fe; --theme-primary-hover: #c084fc; }
+.theme-magic { --theme-primary: #a5b4fc; --theme-primary-hover: #818cf8; }
+.theme-fireflies_forest { --theme-primary: #4ade80; --theme-primary-hover: #22c55e; }
+.theme-bubbles_ocean { --theme-primary: #38bdf8; --theme-primary-hover: #0ea5e9; }
+.theme-marin { --theme-primary: #f472b6; --theme-primary-hover: #ec4899; }
+.theme-makima { --theme-primary: #991b1b; --theme-primary-hover: #7f1d1d; }
+.theme-zero_two { --theme-primary: #f43f5e; --theme-primary-hover: #e11d48; }
+.theme-frieren { --theme-primary: #818cf8; --theme-primary-hover: #6366f1; }
+.theme-sketch { --theme-primary: #4b5563; --theme-primary-hover: #374151; }
 
 @layer base {
   .bg-indigo-600 { background-color: var(--theme-primary) !important; }

@@ -155,12 +155,21 @@ export function ImageDatasetCollector() {
 
   const downloadSingleImage = async (img: ImageData) => {
     try {
-      const content = `Title: ${img.title}\nURL: ${img.url}\nSource: DuckDuckGo Web Search`;
-      const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+      let response = await fetch(img.url).catch(() => null);
+      if (!response || !response.ok) {
+        response = await fetch(`https://corsproxy.io/?${encodeURIComponent(img.url)}`);
+      }
+      
+      if (!response || !response.ok) {
+        throw new Error("Failed to fetch image");
+      }
+
+      const blob = await response.blob();
       const url = URL.createObjectURL(blob);
+      const ext = img.url.split('.').pop()?.split('?')[0] || 'jpg';
       const a = document.createElement('a');
       a.href = url;
-      a.download = `search_result_${img.id}.txt`;
+      a.download = `search_result_${img.id}.${ext}`;
       a.click();
       URL.revokeObjectURL(url);
       
@@ -175,6 +184,7 @@ export function ImageDatasetCollector() {
       }
     } catch (err) {
       console.error("Failed to save result info:", err);
+      alert("Failed to download image. It might be protected by CORS.");
     }
   };
 
@@ -200,13 +210,35 @@ export function ImageDatasetCollector() {
       linksList += `Query: ${keyword}\n`;
       linksList += `Date: ${new Date().toLocaleString()}\n\n`;
 
-      for (let i = 0; i < resultsToDownload.length; i++) {
-        const img = resultsToDownload[i];
-        const content = `Result #${i + 1}\nTitle: ${img.title}\nURL: ${img.url}\n\n`;
-        zip.file(`result_${i + 1}.txt`, content);
-        linksList += content;
-        successCount++;
-        setDownloadProgress(Math.round(((i + 1) / resultsToDownload.length) * 100));
+      const concurrency = 5;
+      for (let i = 0; i < resultsToDownload.length; i += concurrency) {
+        const chunk = resultsToDownload.slice(i, i + concurrency);
+        
+        await Promise.all(chunk.map(async (img, idx) => {
+          const globalIdx = i + idx;
+          try {
+            let response = await fetch(img.url).catch(() => null);
+            if (!response || !response.ok) {
+              response = await fetch(`https://corsproxy.io/?${encodeURIComponent(img.url)}`);
+            }
+            
+            if (response && response.ok) {
+              const blob = await response.blob();
+              const ext = img.url.split('.').pop()?.split('?')[0] || 'jpg';
+              // Use a clean filename
+              const filename = `result_${String(globalIdx + 1).padStart(3, '0')}.${ext}`;
+              zip.file(filename, blob);
+              
+              const content = `Result #${globalIdx + 1}\nTitle: ${img.title}\nURL: ${img.url}\n\n`;
+              linksList += content;
+              successCount++;
+            }
+          } catch (err) {
+            console.error(`Failed to download ${img.url}`, err);
+          }
+        }));
+        
+        setDownloadProgress(Math.round(((i + chunk.length) / resultsToDownload.length) * 100));
       }
       
       zip.file('all_links.txt', linksList);

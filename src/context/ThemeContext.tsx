@@ -1,11 +1,12 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
+import { useAuth } from "./AuthContext";
+import { supabase } from "../lib/supabase";
 
 export type ThemeType = 
-  | "slate" | "midnight" | "emerald" | "rose" | "amber" 
-  | "violet" | "ocean" | "forest" | "sunset" | "cyberpunk" 
-  | "minimalist" | "coffee" | "lavender" | "crimson" | "gold"
-  | "petals" | "constellation" | "water" | "snow" | "matrix"
-  | "fireflies" | "stars" | "bubbles" | "confetti";
+  | "slate" | "petals" | "sakura" | "dandelions" | "feathers" 
+  | "hearts" | "lanterns" | "clouds" | "maple" | "lotus" 
+  | "magic" | "fireflies_forest" | "bubbles_ocean"
+  | "marin" | "makima" | "zero_two" | "frieren" | "sketch";
 
 interface ThemeContextType {
   theme: ThemeType;
@@ -14,34 +15,29 @@ interface ThemeContextType {
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
-export const themes: { id: ThemeType; name: string; color: string; isAnimated?: boolean }[] = [
-  { id: "slate", name: "Classic Slate", color: "#64748b" },
-  { id: "midnight", name: "Midnight Blue", color: "#1e293b" },
-  { id: "emerald", name: "Emerald Green", color: "#10b981" },
-  { id: "rose", name: "Rose Pink", color: "#f43f5e" },
-  { id: "amber", name: "Amber Gold", color: "#f59e0b" },
-  { id: "violet", name: "Deep Violet", color: "#8b5cf6" },
-  { id: "ocean", name: "Ocean Breeze", color: "#0ea5e9" },
-  { id: "forest", name: "Deep Forest", color: "#065f46" },
-  { id: "sunset", name: "Sunset Glow", color: "#f97316" },
-  { id: "cyberpunk", name: "Cyberpunk Neon", color: "#ff00ff" },
-  { id: "minimalist", name: "Minimalist", color: "#d1d5db" },
-  { id: "coffee", name: "Roasted Coffee", color: "#78350f" },
-  { id: "lavender", name: "Lavender", color: "#a78bfa" },
-  { id: "crimson", name: "Crimson Red", color: "#991b1b" },
-  { id: "gold", name: "Luxury Gold", color: "#fbbf24" },
-  { id: "petals", name: "Flower Petals", color: "#fda4af", isAnimated: true },
-  { id: "constellation", name: "Constellation", color: "#1e1b4b", isAnimated: true },
-  { id: "water", name: "Water Ripples", color: "#3b82f6", isAnimated: true },
-  { id: "snow", name: "Falling Snow", color: "#f8fafc", isAnimated: true },
-  { id: "matrix", name: "Matrix Rain", color: "#22c55e", isAnimated: true },
-  { id: "fireflies", name: "Fireflies", color: "#eab308", isAnimated: true },
-  { id: "stars", name: "Twinkling Stars", color: "#fde047", isAnimated: true },
-  { id: "bubbles", name: "Floating Bubbles", color: "#60a5fa", isAnimated: true },
-  { id: "confetti", name: "Party Confetti", color: "#ec4899", isAnimated: true },
+export const themes: { id: ThemeType; name: string; color: string; isAnimated?: boolean; isSpecial?: boolean }[] = [
+  { id: "slate", name: "Default Slate", color: "#64748b" },
+  { id: "petals", name: "Pink Petals", color: "#fda4af", isAnimated: true },
+  { id: "sakura", name: "Sakura Storm", color: "#f9a8d4", isAnimated: true },
+  { id: "dandelions", name: "Dandelions", color: "#fef08a", isAnimated: true },
+  { id: "feathers", name: "Floating Feathers", color: "#e2e8f0", isAnimated: true },
+  { id: "hearts", name: "Floating Hearts", color: "#fb7185", isAnimated: true },
+  { id: "lanterns", name: "Magic Lanterns", color: "#fbbf24", isAnimated: true },
+  { id: "clouds", name: "Soft Clouds", color: "#bae6fd", isAnimated: true },
+  { id: "maple", name: "Maple Drift", color: "#f97316", isAnimated: true },
+  { id: "lotus", name: "Lotus Float", color: "#d8b4fe", isAnimated: true },
+  { id: "magic", name: "Magic Dust", color: "#a5b4fc", isAnimated: true },
+  { id: "fireflies_forest", name: "Fireflies Forest", color: "#4ade80", isAnimated: true },
+  { id: "bubbles_ocean", name: "Ocean Bubbles", color: "#38bdf8", isAnimated: true },
+  { id: "marin", name: "Marin Kitagawa", color: "#f472b6", isSpecial: true },
+  { id: "makima", name: "Makima Style", color: "#991b1b", isSpecial: true },
+  { id: "zero_two", name: "Zero Two", color: "#f43f5e", isSpecial: true },
+  { id: "frieren", name: "Frieren Style", color: "#818cf8", isSpecial: true },
+  { id: "sketch", name: "Sketch Style", color: "#4b5563", isSpecial: true },
 ];
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  const { user, updateUser } = useAuth();
   const [theme, setThemeState] = useState<ThemeType>(() => {
     if (typeof window !== "undefined") {
       return (localStorage.getItem("app-theme") as ThemeType) || "slate";
@@ -49,9 +45,36 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     return "slate";
   });
 
-  const setTheme = (newTheme: ThemeType) => {
+  // Sync theme from user profile when it loads
+  useEffect(() => {
+    if (user?.theme && user.theme !== theme) {
+      setThemeState(user.theme as ThemeType);
+      localStorage.setItem("app-theme", user.theme);
+    }
+  }, [user?.theme]);
+
+  const setTheme = async (newTheme: ThemeType) => {
     setThemeState(newTheme);
     localStorage.setItem("app-theme", newTheme);
+    
+    if (user) {
+      // Optimistically update local user state
+      updateUser({ theme: newTheme });
+      
+      // Update in Supabase
+      try {
+        const { error } = await supabase
+          .from("profiles")
+          .update({ theme: newTheme })
+          .eq("id", user.id);
+          
+        if (error) {
+          console.error("Failed to save theme to Supabase:", error);
+        }
+      } catch (err) {
+        console.error("Error saving theme:", err);
+      }
+    }
   };
 
   useEffect(() => {

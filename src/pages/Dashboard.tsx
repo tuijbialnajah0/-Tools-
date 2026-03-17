@@ -29,17 +29,27 @@ export function Dashboard() {
       if (forceSync) setSyncing(true);
       
       // Sync default tools first to ensure they exist in the database
-      await syncDefaultTools(forceSync);
+      // Add a timeout so it doesn't hang the dashboard if Supabase is slow
+      await Promise.race([
+        syncDefaultTools(forceSync),
+        new Promise(resolve => setTimeout(resolve, 2000))
+      ]);
       
-      const [toolsRes, favoritesRes] = await Promise.allSettled([
+      const fetchPromise = Promise.allSettled([
         supabase.from("tools").select("*").eq("enabled", true),
         user ? supabase.from("favorites").select("tool_id").eq("user_id", user.id) : Promise.resolve({ data: [], error: null })
       ]);
+
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error("Fetch timeout")), 5000)
+      );
+
+      const [toolsRes, favoritesRes] = await Promise.race([fetchPromise, timeoutPromise]) as any;
       
       if (toolsRes.status === 'fulfilled' && toolsRes.value.data) {
         // Filter out duplicates by tool_name (case-insensitive)
         const seenNames = new Set<string>();
-        const uniqueTools = toolsRes.value.data.filter(tool => {
+        const uniqueTools = toolsRes.value.data.filter((tool: Tool) => {
           const normalizedName = tool.tool_name.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
           if (seenNames.has(normalizedName)) {
             return false;
