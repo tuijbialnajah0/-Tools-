@@ -44,10 +44,7 @@ export function Register() {
 
       if (authError) throw authError;
       
-      // If sign up is successful, manually navigate to ensure the user moves
-      if (data.user) {
-        navigate("/");
-      }
+      // Navigation is handled by the useEffect watching the 'user' state
     } catch (err: any) {
       console.error("Registration error:", err);
       setError(err.message || "Failed to create account. Please try again.");

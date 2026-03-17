@@ -34,10 +34,7 @@ export function Login() {
 
       if (authError) throw authError;
       
-      // If sign in is successful, manually navigate to ensure the user moves
-      if (data.user) {
-        navigate("/");
-      }
+      // Navigation is handled by the useEffect watching the 'user' state
     } catch (err: any) {
       console.error("Login error:", err);
       setError(err.message || "Failed to sign in. Please check your credentials.");
