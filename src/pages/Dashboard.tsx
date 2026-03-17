@@ -3,7 +3,7 @@ import { useAuth } from "../context/AuthContext";
 import { Play, CheckCircle2, Settings, Heart, RotateCw } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
-import { syncDefaultTools } from "../lib/defaultTools";
+import { syncDefaultTools, DEFAULT_TOOLS } from "../lib/defaultTools";
 
 type Tool = {
   id: number;
@@ -30,10 +30,14 @@ export function Dashboard() {
       
       // Sync default tools first to ensure they exist in the database
       // Add a timeout so it doesn't hang the dashboard if Supabase is slow
-      await Promise.race([
-        syncDefaultTools(forceSync),
-        new Promise(resolve => setTimeout(resolve, 2000))
-      ]);
+      try {
+        await Promise.race([
+          syncDefaultTools(forceSync),
+          new Promise(resolve => setTimeout(resolve, 3000))
+        ]);
+      } catch (syncErr) {
+        console.warn("Sync default tools failed or timed out:", syncErr);
+      }
       
       const fetchPromise = Promise.allSettled([
         supabase.from("tools").select("*").eq("enabled", true),
@@ -41,7 +45,7 @@ export function Dashboard() {
       ]);
 
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error("Fetch timeout")), 5000)
+        setTimeout(() => reject(new Error("Fetch timeout")), 15000)
       );
 
       const [toolsRes, favoritesRes] = await Promise.race([fetchPromise, timeoutPromise]) as any;
@@ -58,8 +62,15 @@ export function Dashboard() {
           return true;
         });
         setTools(uniqueTools);
+        setError(null); // Clear error if tools are loaded
       } else if (toolsRes.status === 'rejected' || (toolsRes.status === 'fulfilled' && toolsRes.value.error)) {
-        throw (toolsRes.status === 'fulfilled' ? toolsRes.value.error : toolsRes.reason);
+        const fetchError = toolsRes.status === 'fulfilled' ? toolsRes.value.error : toolsRes.reason;
+        console.error("Tools fetch error:", fetchError);
+        
+        // If we have some tools already (from previous load), don't show error
+        if (tools.length === 0) {
+          throw fetchError;
+        }
       }
 
       if (favoritesRes.status === 'fulfilled' && favoritesRes.value.data) {
@@ -69,7 +80,26 @@ export function Dashboard() {
       }
     } catch (err: any) {
       console.error("Error fetching data:", err);
-      setError("Failed to load tools. Please try again later.");
+      
+      // Fallback to default tools if database fetch fails
+      if (tools.length === 0) {
+        console.warn("Falling back to default tools due to fetch error");
+        const fallbackTools = DEFAULT_TOOLS.map((t, index) => ({
+          id: -(index + 1), // Negative IDs for fallback tools
+          ...t
+        }));
+        setTools(fallbackTools);
+        setError("Note: Using offline tool list. Some features may be limited.");
+      } else {
+        const message = err.message || "Unknown error";
+        if (message.includes("timeout")) {
+          setError("Connection timed out. Please check your internet and try again.");
+        } else if (message.includes("JWT")) {
+          setError("Your session has expired. Please log in again.");
+        } else {
+          setError("Failed to load tools. Please try again later.");
+        }
+      }
     } finally {
       setLoadingTools(false);
       setSyncing(false);
@@ -198,8 +228,17 @@ export function Dashboard() {
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-          {error}
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg flex items-center justify-between">
+          <div className="flex items-center">
+            <span className="mr-2">⚠️</span>
+            {error}
+          </div>
+          <button 
+            onClick={() => fetchData(true)}
+            className="text-sm font-bold underline hover:no-underline"
+          >
+            Retry
+          </button>
         </div>
       )}
 
