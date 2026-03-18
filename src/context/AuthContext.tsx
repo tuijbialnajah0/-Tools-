@@ -163,8 +163,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (error: any) {
       console.error("Error fetching profile:", error);
       
+      const isPermissionError = error.code === "permission-denied" || 
+                               (error.message && error.message.toLowerCase().includes("permission"));
+      
       if (error.message && error.message.includes("database (default) does not exist")) {
         console.error("CRITICAL: Firestore database (default) is missing. Please create it in the Firebase Console.");
+      } else if (isPermissionError) {
+        console.warn("Permission denied when fetching profile. This might be due to rules propagation or missing profile document.");
       }
       
       // If we're here, the user is authenticated with Firebase but we couldn't get/create their profile
@@ -177,7 +182,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         age: null,
         gender: null,
         avatar_url: `https://api.dicebear.com/7.x/lorelei/svg?seed=${userId}`,
-        role: "user",
+        role: ADMIN_EMAILS.includes(email) ? "admin" : "user",
         credit_balance: 0,
         total_spent: 0,
         created_at: new Date().toISOString()

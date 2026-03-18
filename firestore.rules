@@ -63,14 +63,14 @@ service cloud.firestore {
     function isAdmin() {
       return isAuthenticated() && 
         (
-          (exists(/databases/$(database)/documents/profiles/$(request.auth.uid)) && 
-           get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role == 'admin') ||
           request.auth.token.email in [
             "tuijbialnajah0@gmail.com",
             "tuijbialnajah@gmail.com",
             "nadiaparveen1526@gmail.com",
             "kamranaliarts69@gmail.com"
-          ]
+          ] ||
+          (exists(/databases/$(database)/documents/profiles/$(request.auth.uid)) && 
+           get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role == 'admin')
         );
     }
 
@@ -119,6 +119,10 @@ service cloud.firestore {
     // Rules
     // ===============================================================
 
+    match /_connection_test_/{docId} {
+      allow read: if true;
+    }
+
     match /profiles/{userId} {
       allow read: if isOwner(userId) || isAdmin();
       allow create: if isAuthenticated() && isOwner(userId) && isValidProfile(request.resource.data) && 
@@ -128,7 +132,7 @@ service cloud.firestore {
                        isAdmin());
 
       match /favorites/{toolId} {
-        allow read, write: if isOwner(userId);
+        allow read, write: if isOwner(userId) || isAdmin();
       }
     }
 

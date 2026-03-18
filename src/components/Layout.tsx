@@ -87,27 +87,31 @@ export function Layout() {
     // Set up real-time subscription for favorites using Firestore onSnapshot
     const favoritesRef = collection(db, "profiles", user.id, "favorites");
     
-    const unsubscribe = onSnapshot(favoritesRef, async (snapshot) => {
-      try {
-        const toolsList: any[] = [];
-        
-        for (const favoriteDoc of snapshot.docs) {
-          const toolId = favoriteDoc.id;
-          const toolRef = doc(db, "tools", toolId);
-          const toolSnap = await getDoc(toolRef);
+    const unsubscribe = onSnapshot(favoritesRef, (snapshot) => {
+      const fetchTools = async () => {
+        try {
+          const toolsList: any[] = [];
           
-          if (toolSnap.exists()) {
-            toolsList.push({
-              id: toolSnap.id,
-              ...toolSnap.data()
-            });
+          for (const favoriteDoc of snapshot.docs) {
+            const toolId = favoriteDoc.id;
+            const toolRef = doc(db, "tools", toolId);
+            const toolSnap = await getDoc(toolRef);
+            
+            if (toolSnap.exists()) {
+              toolsList.push({
+                id: toolSnap.id,
+                ...toolSnap.data()
+              });
+            }
           }
+          
+          setFavoriteTools(toolsList);
+        } catch (err) {
+          console.error("Error fetching favorites in real-time:", err);
         }
-        
-        setFavoriteTools(toolsList);
-      } catch (err) {
-        console.error("Error fetching favorites in real-time:", err);
-      }
+      };
+      
+      fetchTools();
     }, (error) => {
       console.error("Favorites snapshot error:", error);
     });

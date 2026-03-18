@@ -37,13 +37,16 @@ function DatabaseCheck({ children }: { children: React.ReactNode }) {
       setDbError(null);
     } catch (err: any) {
       console.error("Database connection test failed:", err);
-      if (err.message && (err.message.includes("database (default) does not exist") || err.message.includes("client is offline"))) {
+      const isPermissionError = err.code === "permission-denied" || 
+                               (err.message && err.message.toLowerCase().includes("permission"));
+      
+      if (isPermissionError) {
+        // Permission denied means the database exists and rules are working!
+        setDbError(null);
+      } else if (err.message && (err.message.includes("database (default) does not exist") || err.message.includes("client is offline"))) {
         setDbError(err.message.includes("database (default) does not exist") 
           ? "The Firestore database '(default)' does not exist for this project. Please ensure you created it in the Firebase Console."
           : "The Firestore client is reporting as 'offline'. This usually means the database is not accessible or your network is blocking the connection.");
-      } else if (err.code === "permission-denied") {
-        // Permission denied is actually a good sign - it means the database exists!
-        setDbError(null);
       } else {
         setDbError(err.message || "An unknown error occurred while connecting to the database.");
       }
