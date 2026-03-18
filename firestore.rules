@@ -62,8 +62,8 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() && 
-        (get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role == 'admin' ||
-         (request.auth.token.email in ['nadiaparveen1526@gmail.com', 'tuijbialnajah@gmail.com', 'tuijbialnajah0@gmail.com', 'pintrestk11@gmail.com', 'kamronbazoz@gmail.com'] && request.auth.token.email_verified == true));
+        (exists(/databases/$(database)/documents/profiles/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role == 'admin');
     }
 
     function isValidEmail(email) {

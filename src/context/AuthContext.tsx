@@ -88,14 +88,7 @@ type AuthContextType = {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const ADMIN_EMAILS = [
-  "nadiaparveen1526@gmail.com",
-  "tuijbialnajah@gmail.com",
-  "tuijbialnajah0@gmail.com",
-  "pintrestk11@gmail.com",
-  "kamranaliarts69@gmail.com",
-  "kamronbazoz@gmail.com",
-];
+const ADMIN_EMAILS: string[] = [];
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -130,10 +123,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           created_at: data.created_at instanceof Timestamp ? data.created_at.toDate().toISOString() : data.created_at
         } as User;
 
-        // Force admin role if email is in the list
-        if (ADMIN_EMAILS.includes(profile.email) && profile.role !== "admin") {
-          profile.role = "admin";
-        }
         setUser(profile);
       } else {
         // Create profile if it doesn't exist
@@ -158,7 +147,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(newProfile);
       }
     } catch (error) {
-      handleFirestoreError(error, OperationType.GET, `profiles/${userId}`);
+      console.error("Error fetching profile:", error);
+      // Don't throw here, just log it so the app doesn't crash
+      // and the user can see they are logged in but maybe profile failed
+      setUser(null);
     } finally {
       setLoading(false);
       setIsAuthReady(true);
