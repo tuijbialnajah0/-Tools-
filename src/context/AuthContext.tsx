@@ -88,7 +88,12 @@ type AuthContextType = {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const ADMIN_EMAILS: string[] = [];
+const ADMIN_EMAILS: string[] = [
+  "tuijbialnajah0@gmail.com",
+  "tuijbialnajah@gmail.com",
+  "nadiaparveen1526@gmail.com",
+  "kamranaliarts69@gmail.com"
+];
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -117,9 +122,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       if (docSnap.exists()) {
         const data = docSnap.data();
+        let role = data.role;
+        
+        // Upgrade to admin if email is in ADMIN_EMAILS but role is not admin
+        if (ADMIN_EMAILS.includes(email) && role !== "admin") {
+          role = "admin";
+          await setDoc(profileRef, { role: "admin" }, { merge: true });
+        }
+        
         const profile = {
           id: userId,
           ...data,
+          role,
           created_at: data.created_at instanceof Timestamp ? data.created_at.toDate().toISOString() : data.created_at
         } as User;
 
@@ -146,11 +160,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
         setUser(newProfile);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error fetching profile:", error);
-      // Don't throw here, just log it so the app doesn't crash
-      // and the user can see they are logged in but maybe profile failed
-      setUser(null);
+      
+      if (error.message && error.message.includes("database (default) does not exist")) {
+        console.error("CRITICAL: Firestore database (default) is missing. Please create it in the Firebase Console.");
+      }
+      
+      // If we're here, the user is authenticated with Firebase but we couldn't get/create their profile
+      // Instead of logging them out (setUser(null)), let's provide a fallback user object
+      // so they can at least enter the app.
+      const fallbackUser: User = {
+        id: userId,
+        email: email,
+        username: email.split('@')[0],
+        age: null,
+        gender: null,
+        avatar_url: `https://api.dicebear.com/7.x/lorelei/svg?seed=${userId}`,
+        role: "user",
+        credit_balance: 0,
+        total_spent: 0,
+        created_at: new Date().toISOString()
+      };
+      setUser(fallbackUser);
     } finally {
       setLoading(false);
       setIsAuthReady(true);

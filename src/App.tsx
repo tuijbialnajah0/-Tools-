@@ -18,6 +18,90 @@ import { AdminDashboard } from "./pages/admin/AdminDashboard";
 import { AdminUsers } from "./pages/admin/AdminUsers";
 import { AdminTools } from "./pages/admin/AdminTools";
 import { Favorites } from "./pages/Favorites";
+import { db } from "./firebase";
+import { getDoc, doc } from "firebase/firestore";
+
+function DatabaseCheck({ children }: { children: React.ReactNode }) {
+  const [dbError, setDbError] = React.useState<string | null>(null);
+  const [checking, setChecking] = React.useState(true);
+  const [retryCount, setRetryCount] = React.useState(0);
+
+  const checkDb = React.useCallback(async () => {
+    setChecking(true);
+    setDbError(null);
+    try {
+      // Try to fetch a non-existent document to test connection
+      // We use a short timeout to detect "offline" faster
+      const testDoc = doc(db, "_connection_test_", "test");
+      await getDoc(testDoc);
+      setDbError(null);
+    } catch (err: any) {
+      console.error("Database connection test failed:", err);
+      if (err.message && (err.message.includes("database (default) does not exist") || err.message.includes("client is offline"))) {
+        setDbError(err.message.includes("database (default) does not exist") 
+          ? "The Firestore database '(default)' does not exist for this project. Please ensure you created it in the Firebase Console."
+          : "The Firestore client is reporting as 'offline'. This usually means the database is not accessible or your network is blocking the connection.");
+      } else if (err.code === "permission-denied") {
+        // Permission denied is actually a good sign - it means the database exists!
+        setDbError(null);
+      } else {
+        setDbError(err.message || "An unknown error occurred while connecting to the database.");
+      }
+    } finally {
+      setChecking(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    checkDb();
+  }, [checkDb, retryCount]);
+
+  if (checking && !dbError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
+        <div className="flex flex-col items-center space-y-4">
+          <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-slate-600 dark:text-slate-400 font-medium">Connecting to database...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (dbError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-red-50 dark:bg-slate-950 p-4">
+        <div className="max-w-md w-full bg-white dark:bg-slate-900 p-8 rounded-2xl shadow-xl border border-red-200 dark:border-red-900/50 text-center">
+          <div className="w-16 h-16 bg-red-100 dark:bg-red-900/20 rounded-full flex items-center justify-center mx-auto mb-6">
+            <svg className="w-8 h-8 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-4">Connection Error</h2>
+          <p className="text-slate-600 dark:text-slate-400 mb-8 leading-relaxed">{dbError}</p>
+          
+          <div className="space-y-3">
+            <button 
+              onClick={() => setRetryCount(prev => prev + 1)}
+              className="w-full bg-indigo-600 text-white px-6 py-3 rounded-xl font-semibold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 dark:shadow-none"
+            >
+              Retry Connection
+            </button>
+            <a 
+              href="https://console.firebase.google.com/project/bjetools/firestore" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="block w-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 px-6 py-3 rounded-xl font-semibold hover:bg-slate-200 dark:hover:bg-slate-700 transition-all"
+            >
+              Open Firebase Console
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return <>{children}</>;
+}
 
 function ProtectedRoute({
   children,
@@ -42,9 +126,10 @@ function ProtectedRoute({
 
 export default function App() {
   return (
-    <AuthProvider>
-      <ToolProvider>
-        <BrowserRouter>
+    <DatabaseCheck>
+      <AuthProvider>
+        <ToolProvider>
+          <BrowserRouter>
             <Routes>
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
@@ -128,5 +213,6 @@ export default function App() {
         </BrowserRouter>
       </ToolProvider>
     </AuthProvider>
+    </DatabaseCheck>
   );
 }

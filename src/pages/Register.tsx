@@ -43,7 +43,11 @@ export function Register() {
       navigate("/");
     } catch (err: any) {
       console.error("Registration error:", err);
-      setError(err.message || "Failed to create account. Please try again.");
+      if (err.code === "auth/unauthorized-domain") {
+        setError("This domain is not authorized for Google Login. Please add this domain to your Firebase Console (Authentication > Settings > Authorized domains).");
+      } else {
+        setError(err.message || "Failed to create account. Please try again.");
+      }
     } finally {
       setLoading(false);
     }

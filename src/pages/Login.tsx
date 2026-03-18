@@ -33,7 +33,17 @@ export function Login() {
       navigate("/");
     } catch (err: any) {
       console.error("Login error:", err);
-      setError(err.message || "Failed to sign in. Please check your credentials.");
+      if (err.code === "auth/invalid-credential") {
+        setError("Invalid email or password. If you don't have an account, please sign up.");
+      } else if (err.code === "auth/user-not-found") {
+        setError("No account found with this email. Please sign up.");
+      } else if (err.code === "auth/wrong-password") {
+        setError("Incorrect password. Please try again.");
+      } else if (err.code === "auth/unauthorized-domain") {
+        setError("This domain is not authorized for Google Login. Please add this domain to your Firebase Console (Authentication > Settings > Authorized domains).");
+      } else {
+        setError(err.message || "Failed to sign in. Please check your credentials.");
+      }
     } finally {
       setLoading(false);
     }
