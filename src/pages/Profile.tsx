@@ -18,7 +18,7 @@ const FEMALE_AVATARS = Array.from({ length: 250 }, (_, i) => ({
 export function Profile() {
   const { user, updateUser } = useAuth();
   const [username, setUsername] = useState(user?.username || "");
-  const [age, setAge] = useState(user?.age?.toString() || "");
+  const [age, setAge] = useState((user?.age && !isNaN(user.age)) ? user.age.toString() : "");
   const [gender, setGender] = useState<"male" | "female" | "other">(user?.gender || "other");
   const [avatarTab, setAvatarTab] = useState<"male" | "female">(user?.gender === "female" ? "female" : "male");
   const [selectedAvatar, setSelectedAvatar] = useState(user?.avatar_url || MALE_AVATARS[0].url);

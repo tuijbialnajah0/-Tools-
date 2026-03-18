@@ -37,7 +37,7 @@ export async function syncDefaultTools(force = false) {
       
       if (force) {
         const toolsSnap = await getDocs(toolsRef);
-        const existingNames = new Set(toolsSnap.docs.map(doc => doc.data().tool_name.toLowerCase()));
+        const existingNames = new Set(toolsSnap.docs.map(doc => (doc.data().tool_name || "").toLowerCase()));
         
         for (const tool of DEFAULT_TOOLS) {
           if (!existingNames.has(tool.tool_name.toLowerCase())) {

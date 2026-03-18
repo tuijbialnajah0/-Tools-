@@ -30,6 +30,7 @@ export const RANKS: RankInfo[] = [
 ];
 
 export function calculateExp(totalSpent: number): number {
+  if (typeof totalSpent !== 'number' || isNaN(totalSpent)) return 0;
   return Math.floor(totalSpent / 10);
 }
 

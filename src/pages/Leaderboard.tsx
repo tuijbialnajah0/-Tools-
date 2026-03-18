@@ -5,7 +5,8 @@ import { db } from "../firebase";
 import { calculateExp, getRank } from "../lib/ranks";
 
 type LeaderboardEntry = {
-  username: string;
+  id: string;
+  username: string | null;
   age: number | null;
   total_spent: number;
   credit_balance: number;
@@ -36,7 +37,10 @@ export function Leaderboard() {
       const q = query(profilesRef, orderBy(orderColumn, "desc"), limit(100));
       const querySnapshot = await getDocs(q);
 
-      const data = querySnapshot.docs.map(doc => doc.data() as LeaderboardEntry);
+      const data = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as LeaderboardEntry));
       setEntries(data);
     } catch (err: any) {
       console.error("Error fetching leaderboard:", err);
@@ -47,7 +51,7 @@ export function Leaderboard() {
   };
 
   const filteredEntries = entries.filter((entry) =>
-    entry.username.toLowerCase().includes(search.toLowerCase())
+    (entry.username || "").toLowerCase().includes(search.toLowerCase())
   );
 
   const getRankIcon = (index: number) => {
@@ -201,7 +205,7 @@ export function Leaderboard() {
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {filteredEntries.map((entry, index) => (
                   <tr
-                    key={entry.username}
+                    key={entry.id}
                     className={`group transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/30 ${
                       index < 3 ? "bg-indigo-50/30 dark:bg-indigo-900/10" : ""
                     }`}

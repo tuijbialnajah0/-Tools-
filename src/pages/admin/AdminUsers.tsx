@@ -83,7 +83,7 @@ export function AdminUsers() {
   };
 
   const filteredUsers = users.filter((u) =>
-    u.email.toLowerCase().includes(search.toLowerCase())
+    (u.email || "").toLowerCase().includes(search.toLowerCase())
   );
 
   return (

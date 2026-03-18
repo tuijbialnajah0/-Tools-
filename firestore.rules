@@ -124,7 +124,10 @@ service cloud.firestore {
     }
 
     match /profiles/{userId} {
-      allow read: if isOwner(userId) || isAdmin();
+      // Allow authenticated users to read profiles for the leaderboard.
+      // NOTE: This exposes all fields (including email) to authenticated users.
+      // In a production app, sensitive data should be in a separate private collection.
+      allow read: if isAuthenticated();
       allow create: if isAuthenticated() && isOwner(userId) && isValidProfile(request.resource.data) && 
                       (request.resource.data.role == 'user' || isAdmin());
       allow update: if isAuthenticated() && 

@@ -22,7 +22,8 @@ export async function executeTool(userId: string, toolId: string, customCost?: n
 
       const userData = userDoc.data();
       const toolData = toolDoc.data();
-      const cost = customCost !== undefined ? customCost : toolData.credit_cost;
+      const rawCost = customCost !== undefined ? customCost : toolData.credit_cost;
+      const cost = typeof rawCost === 'number' && !isNaN(rawCost) ? rawCost : 0;
 
       if (!toolData.enabled) throw new Error("Tool is disabled");
       if (userData.credit_balance < cost) {

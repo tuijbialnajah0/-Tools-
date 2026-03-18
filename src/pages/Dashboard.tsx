@@ -110,7 +110,8 @@ export function Dashboard() {
   };
 
   const handleExecute = (tool: Tool) => {
-    const toolName = tool.tool_name.trim();
+    const toolName = (tool.tool_name || "").trim();
+    if (!toolName) return;
     
     // Explicit mappings for known tools to ensure they always work
     const explicitMappings: Record<string, string> = {
@@ -143,7 +144,7 @@ export function Dashboard() {
     }
   };
 
-  const categories = Array.from(new Set(tools.map((t) => t.category)));
+  const categories = Array.from(new Set(tools.map((t) => t.category))).filter(Boolean);
   const favoriteTools = tools.filter(t => favoriteToolIds.includes(t.id));
   
   const filteredTools = selectedCategory === "All" 

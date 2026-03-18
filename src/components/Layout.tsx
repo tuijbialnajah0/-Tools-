@@ -289,7 +289,7 @@ export function Layout() {
                 </p>
               </div>
               {favoriteTools.map((tool) => {
-                const toolName = tool.tool_name.trim();
+                const toolName = (tool.tool_name || "").trim();
                 const explicitMappings: Record<string, string> = {
                   "Background Remover": "background-remover",
                   "Whatsapp-S-Create": "whatsapp-s-create",

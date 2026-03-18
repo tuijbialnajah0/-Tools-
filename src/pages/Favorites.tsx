@@ -73,7 +73,8 @@ export function Favorites() {
   };
 
   const handleExecute = (tool: Tool) => {
-    const toolName = tool.tool_name.trim();
+    const toolName = (tool.tool_name || "").trim();
+    if (!toolName) return;
     const explicitMappings: Record<string, string> = {
       "Background Remover": "/background-remover",
       "Whatsapp-S-Create": "/whatsapp-s-create",
