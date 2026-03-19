@@ -118,8 +118,8 @@ export function ImageDatasetCollector() {
       const newImages = isLoadMore ? [...images, ...results] : results;
       
       // Deduplicate by URL to ensure no duplicates
-      const uniqueImages = Array.from(
-        new Map(newImages.map(item => [item.url, item])).values()
+      const uniqueImages: ImageData[] = Array.from(
+        new Map<string, ImageData>(newImages.map(item => [item.url, item])).values()
       );
       
       setImages(uniqueImages);

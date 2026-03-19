@@ -67,7 +67,10 @@
 .theme-makima { --theme-primary: #991b1b; --theme-primary-hover: #7f1d1d; }
 .theme-zero_two { --theme-primary: #f43f5e; --theme-primary-hover: #e11d48; }
 .theme-frieren { --theme-primary: #818cf8; --theme-primary-hover: #6366f1; }
-.theme-sketch { --theme-primary: #4b5563; --theme-primary-hover: #374151; }
+.theme-green-leaf { 
+  --theme-primary: #065f46; 
+  --theme-primary-hover: #064e3b; 
+}
 
 
 

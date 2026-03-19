@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
+import { NatureTheme } from './NatureTheme';
 
 export function ThemeEffects() {
   const [theme, setTheme] = useState<string | null>(localStorage.getItem('app-theme'));
@@ -15,6 +16,8 @@ export function ThemeEffects() {
       // Add the new theme class if it exists
       if (currentTheme === 'pink-petals') {
         document.documentElement.classList.add('theme-petals');
+      } else if (currentTheme === 'green-leaf-petals') {
+        document.documentElement.classList.add('theme-green-leaf');
       }
     };
 
@@ -75,6 +78,10 @@ export function ThemeEffects() {
       );
     });
   }, [theme]);
+
+  if (theme === 'green-leaf-petals') {
+    return <NatureTheme />;
+  }
 
   if (theme !== 'pink-petals') return null;
 

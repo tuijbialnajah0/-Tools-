@@ -1,20 +1,23 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Image Dataset Collector
 
-# Run and deploy your AI Studio app
+A high-quality, Pinterest-style aesthetic image dataset collector.
 
-This contains everything you need to run your app locally.
+## Netlify Deployment
 
-View your app in AI Studio: https://ai.studio/apps/505c7ddb-f78f-4c20-a5c8-ea6acdec14f2
+This project is configured for easy deployment to Netlify.
 
-## Run Locally
+### Steps to Deploy:
 
-**Prerequisites:**  Node.js
+1.  **Connect to GitHub:** Push your code to a GitHub repository.
+2.  **Create a New Site on Netlify:** Connect your GitHub repository to Netlify.
+3.  **Build Settings:**
+    *   **Build Command:** `npm run build`
+    *   **Publish Directory:** `dist`
+    *   **Functions Directory:** `netlify/functions`
+4.  **Redirects:** The `netlify.toml` and `public/_redirects` files handle SPA routing and API proxying automatically.
 
-
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+### Features:
+*   **Pinterest-style Masonry Layout:** Beautiful staggered image grid.
+*   **Aesthetic Search:** Automatically enhances queries for Pinterest-like results.
+*   **Dataset Collection:** Download images in bulk as a ZIP file.
+*   **Serverless API:** Backend logic is handled by Netlify Functions for seamless deployment.
