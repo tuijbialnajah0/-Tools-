@@ -12,10 +12,6 @@ import {
   Check
 } from "lucide-react";
 import { Link } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
-import { collection, query, where, getDocs, limit } from "firebase/firestore";
-import { db } from "../firebase";
-import { executeTool } from "../lib/toolService";
 import ReactMarkdown from "react-markdown";
 import { GoogleGenAI } from "@google/genai";
 
@@ -26,36 +22,12 @@ type Message = {
 };
 
 export function CodeBase() {
-  const { user, updateUser } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [toolId, setToolId] = useState<string | null>(null);
-  const [creditCost, setCreditCost] = useState(10);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const fetchToolId = async () => {
-      try {
-        const toolsRef = collection(db, "tools");
-        const q = query(toolsRef, where("tool_name", "==", "Code base"), limit(1));
-        const querySnapshot = await getDocs(q);
-        
-        if (!querySnapshot.empty) {
-          const doc = querySnapshot.docs[0];
-          setToolId(doc.id);
-          if (doc.data().credit_cost !== undefined) {
-            setCreditCost(doc.data().credit_cost);
-          }
-        }
-      } catch (err) {
-        console.error("Error fetching tool data:", err);
-      }
-    };
-    fetchToolId();
-  }, []);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -65,12 +37,6 @@ export function CodeBase() {
 
   const handleSend = async () => {
     if (!input.trim()) return;
-
-    const isAdmin = user?.role === "admin";
-    if (!isAdmin && user && user.credit_balance < creditCost) {
-      setError(`Insufficient credits. You need ${creditCost} credits per message.`);
-      return;
-    }
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -84,18 +50,6 @@ export function CodeBase() {
     setError(null);
 
     try {
-      // Deduct credits
-      if (toolId && user) {
-        await executeTool(user.id, toolId, creditCost);
-      }
-
-      if (user && !isAdmin) {
-        updateUser({ 
-          credit_balance: user.credit_balance - creditCost,
-          total_spent: (user.total_spent || 0) + creditCost
-        });
-      }
-
       // Initialize Gemini
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
       
@@ -179,13 +133,6 @@ export function CodeBase() {
             <RefreshCw className="w-4 h-4 mr-1.5" />
             Clear Chat
           </button>
-          <div className="hidden sm:flex items-center bg-indigo-50 dark:bg-indigo-900/20 px-4 py-2 rounded-lg border border-indigo-100 dark:border-indigo-800">
-            <span className="text-sm font-medium text-indigo-800 dark:text-indigo-300">Cost:</span>
-            <div className="flex items-center ml-2 text-indigo-600 dark:text-indigo-400 font-bold">
-              <span className="mr-1">💳</span>
-              {creditCost} / msg
-            </div>
-          </div>
         </div>
       </div>
 

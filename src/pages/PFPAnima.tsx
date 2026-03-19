@@ -1,10 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { useAuth } from "../context/AuthContext";
 import { Link } from "react-router-dom";
 import { ChevronLeft, Search, Download, Image as ImageIcon, ChevronRight, Loader2, AlertCircle, ExternalLink, Sparkles } from "lucide-react";
-import { collection, query, where, getDocs, limit } from "firebase/firestore";
-import { db } from "../firebase";
-import { executeTool } from "../lib/toolService";
 import JSZip from "jszip";
 
 interface ImageData {
@@ -17,7 +13,6 @@ interface ImageData {
 }
 
 export function PFPAnima() {
-  const { user, updateUser } = useAuth();
   const [keyword, setKeyword] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [searchProgress, setSearchProgress] = useState(0);
@@ -30,29 +25,6 @@ export function PFPAnima() {
   const [downloadProgress, setDownloadProgress] = useState(0);
 
   const imagesPerPage = 30;
-  const [creditCost, setCreditCost] = useState(100); // Cost per page download
-  const [toolId, setToolId] = useState<string | null>(null);
-
-  useEffect(() => {
-    const fetchToolId = async () => {
-      try {
-        const toolsRef = collection(db, "tools");
-        const q = query(toolsRef, where("tool_name", "==", "PFP Anima"), limit(1));
-        const querySnapshot = await getDocs(q);
-        
-        if (!querySnapshot.empty) {
-          const doc = querySnapshot.docs[0];
-          setToolId(doc.id);
-          if (doc.data().credit_cost !== undefined) {
-            setCreditCost(doc.data().credit_cost);
-          }
-        }
-      } catch (err) {
-        console.error("Error fetching tool data:", err);
-      }
-    };
-    fetchToolId();
-  }, []);
 
   const fetchWithProxy = async (url: string, timeoutMs = 15000) => {
     const controller = new AbortController();
@@ -522,28 +494,12 @@ export function PFPAnima() {
   };
 
   const downloadSingleImage = async (img: ImageData) => {
-    if (!user) return;
-    if (user.credit_balance < creditCost) {
-      setError(`Insufficient credits. You need ${creditCost} credits to download.`);
-      return;
-    }
-
     try {
       let response = await fetch(img.url).catch(() => null);
       if (!response || !response.ok) {
         response = await fetch(`https://corsproxy.io/?${encodeURIComponent(img.url)}`);
       }
       const blob = await response.blob();
-
-      if (user && toolId) {
-        await executeTool(user.id, toolId, creditCost);
-      }
-
-      updateUser({ 
-        ...user,
-        credit_balance: user.credit_balance - creditCost,
-        total_spent: (user.total_spent || 0) + creditCost
-      });
 
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -557,12 +513,6 @@ export function PFPAnima() {
   };
 
   const downloadCurrentPage = async () => {
-    if (!user) return;
-    if (user.credit_balance < creditCost) {
-      setError(`Insufficient credits. You need ${creditCost} credits to download.`);
-      return;
-    }
-
     const currentImages = allImages.slice((currentPage - 1) * imagesPerPage, currentPage * imagesPerPage);
     if (currentImages.length === 0) return;
 
@@ -608,15 +558,6 @@ export function PFPAnima() {
       const zipBlob = await zip.generateAsync({ type: "blob" });
       const customBlob = new Blob([zipBlob], { type: "application/octet-stream" });
       
-      if (user && toolId) {
-        await executeTool(user.id, toolId, creditCost);
-      }
-
-      updateUser({ 
-        credit_balance: user.credit_balance - creditCost,
-        total_spent: (user.total_spent || 0) + creditCost
-      });
-
       const url = URL.createObjectURL(customBlob);
       const a = document.createElement('a');
       a.href = url;

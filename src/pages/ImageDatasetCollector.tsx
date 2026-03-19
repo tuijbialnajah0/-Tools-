@@ -1,10 +1,6 @@
 import React, { useState } from "react";
-import { useAuth } from "../context/AuthContext";
 import { Link } from "react-router-dom";
 import { ChevronLeft, Search, Download, Image as ImageIcon, Filter, CheckCircle2, AlertCircle, ExternalLink, Loader2, Layers } from "lucide-react";
-import { collection, query, where, getDocs, limit } from "firebase/firestore";
-import { db } from "../firebase";
-import { executeTool } from "../lib/toolService";
 import JSZip from "jszip";
 
 interface ImageData {
@@ -19,7 +15,6 @@ interface ImageData {
 }
 
 export function ImageDatasetCollector() {
-  const { user, updateUser } = useAuth();
   const [keyword, setKeyword] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [searchProgress, setSearchProgress] = useState(0);
@@ -31,94 +26,58 @@ export function ImageDatasetCollector() {
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [statusMessage, setStatusMessage] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [showWaifuWarning, setShowWaifuWarning] = useState(false);
   
   const [filterSource, setFilterSource] = useState<string>("All");
   const [filterOrientation, setFilterOrientation] = useState<string>("All");
-  const [activeVariants, setActiveVariants] = useState<string[]>([]);
-  const [nsfwEnabled, setNsfwEnabled] = useState(false);
-  const [toolId, setToolId] = useState<string | null>(null);
-  const [creditCost, setCreditCost] = useState(20);
-
-  React.useEffect(() => {
-    const fetchToolData = async () => {
-      try {
-        const toolsRef = collection(db, "tools");
-        const q = query(toolsRef, where("tool_name", "==", "Image Dataset Collector"), limit(1));
-        const querySnapshot = await getDocs(q);
-        
-        if (!querySnapshot.empty) {
-          const doc = querySnapshot.docs[0];
-          setToolId(doc.id);
-          if (doc.data().credit_cost !== undefined) {
-            setCreditCost(doc.data().credit_cost);
-          }
-        }
-      } catch (err) {
-        console.error("Error fetching tool data:", err);
-      }
-    };
-    fetchToolData();
-  }, []);
-
-  const animeCharacters = [
-    "Marin Kitagawa", "Zero Two", "Rem", "Mikasa Ackerman", "Nezuko Kamado",
-    "Hatsune Miku", "Power", "Makima", "Megumin", "Aqua", "Asuka Langley",
-    "Rei Ayanami", "Saber", "Tohru", "Kaguya Shinomiya", "Chika Fujiwara",
-    "Yor Forger", "Anya Forger", "Lucy (Cyberpunk)", "Rebecca (Cyberpunk)"
-  ];
-
-  const variants = [
-    { id: 'neko', label: 'Neko', color: 'bg-orange-500' },
-    { id: 'maid', label: 'Maid', color: 'bg-indigo-500' },
-    { id: 'bunny', label: 'Bunny', color: 'bg-pink-500' },
-    { id: 'swimsuit', label: 'Swimsuit', color: 'bg-blue-500' },
-    { id: 'school_uniform', label: 'School', color: 'bg-emerald-500' },
-    { id: 'cosplay', label: 'Cosplay', color: 'bg-purple-500' },
-    { id: 'pfp', label: 'PFP/Icon', color: 'bg-slate-700' },
-  ];
-
-  const toggleVariant = (id: string) => {
-    setActiveVariants(prev => 
-      prev.includes(id) ? prev.filter(v => v !== id) : [...prev, id]
-    );
-  };
-
-  const fetchWithProxy = async (url: string, timeoutMs = 15000) => {
-    const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), timeoutMs);
-    const proxies = [
-      (u: string) => `https://corsproxy.io/?${encodeURIComponent(u)}`,
-      (u: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
-    ];
-
-    try {
-      let res = await fetch(url, { signal: controller.signal }).catch(() => null);
-      
-      if (!res || !res.ok) {
-        for (const proxy of proxies) {
-          res = await fetch(proxy(url), { signal: controller.signal }).catch(() => null);
-          if (res && res.ok) break;
-        }
-      }
-      
-      clearTimeout(id);
-      return res;
-    } catch (e) {
-      clearTimeout(id);
-      return null;
-    }
-  };
-
+  const [filterQuality, setFilterQuality] = useState<string>("Any");
   const [searchCache, setSearchCache] = useState<Record<string, ImageData[]>>({});
+
+  const popularSearches = [
+    "Aesthetic Wallpaper", "Minimalist Setup", "Cyberpunk Art", "Nature Photography", "Vintage Architecture",
+    "Anime Scenery", "Cozy Room", "Street Photography", "Dark Academia", "Neon City",
+    "Concept Art", "Character Design", "Pixel Art", "Watercolor Illustration", "Tattoo Design"
+  ];
+
+  const fetchImageBlob = async (url: string): Promise<Blob | null> => {
+    try {
+      const res = await fetch(`/api/proxy-image?url=${encodeURIComponent(url)}`);
+      if (res.ok) {
+        return await res.blob();
+      }
+    } catch (e) {
+      console.warn("Proxy image failed", e);
+    }
+
+    // Fallback to wsrv.nl if our backend proxy fails
+    try {
+      const res = await fetch(`https://wsrv.nl/?url=${encodeURIComponent(url)}&output=webp&q=80`);
+      if (res.ok) {
+        return await res.blob();
+      }
+    } catch (e) {
+      console.warn("wsrv.nl fallback failed", e);
+    }
+    
+    return null;
+  };
 
   const handleSearch = async (e?: React.FormEvent, isLoadMore = false) => {
     if (e) e.preventDefault();
     if (!keyword.trim()) return;
 
-    // Cache check
-    if (!isLoadMore && searchCache[keyword]) {
-      setImages(searchCache[keyword]);
+    const fullKeyword = keyword.trim();
+
+    if (!isLoadMore && searchCache[fullKeyword]) {
+      if (fullKeyword.toLowerCase().includes("frieren")) {
+        setShowWaifuWarning(true);
+      }
+      setImages(searchCache[fullKeyword]);
       return;
+    }
+
+    if (!isLoadMore && fullKeyword.toLowerCase().includes("frieren")) {
+      setShowWaifuWarning(true);
     }
 
     setIsSearching(true);
@@ -131,88 +90,48 @@ export function ImageDatasetCollector() {
     }
     
     const currentPage = isLoadMore ? page + 1 : 1;
-    const variantQuery = activeVariants.length > 0 ? ` ${activeVariants.join(' ')}` : '';
-    const fullKeyword = `${keyword.trim()}${variantQuery}`;
-    const safeSearch = nsfwEnabled ? -1 : 1;
-    
-    setStatusMessage(isLoadMore ? "Fetching more results..." : "Searching DuckDuckGo...");
+    setStatusMessage(isLoadMore ? "Fetching more results..." : "Searching images...");
 
     try {
       setSearchProgress(20);
-      const searchUrl = `https://duckduckgo.com/html/?q=${encodeURIComponent(fullKeyword)}&s=${(currentPage - 1) * 30}&kp=${safeSearch}`;
-      const res = await fetchWithProxy(searchUrl);
 
-      if (!res || !res.ok) {
-        throw new Error("Failed to fetch results from DuckDuckGo. Please try again.");
+      // Broaden keyword to include pinterest style for aesthetic results
+      const enhancedKeyword = `${fullKeyword} pinterest aesthetic`;
+      const searchRes = await fetch(`/api/search-images?q=${encodeURIComponent(enhancedKeyword)}&page=${currentPage}`);
+      
+      if (!searchRes.ok) {
+        const errorData = await searchRes.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to fetch search results from server.");
       }
 
-      setSearchProgress(50);
-      const html = await res.text();
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(html, "text/html");
-      const resultElements = doc.querySelectorAll(".result");
-      
-      const results: ImageData[] = [];
-      const seenLinks = new Set<string>(isLoadMore ? images.map(img => img.url) : []);
-
-      resultElements.forEach((el, idx) => {
-        const titleEl = el.querySelector(".result__a");
-        const snippetEl = el.querySelector(".result__snippet");
-        
-        if (titleEl) {
-          let link = titleEl.getAttribute("href") || "";
-          const title = titleEl.textContent?.trim() || "Untitled";
-          const snippet = snippetEl?.textContent?.trim() || "";
-
-          // Clean DuckDuckGo redirect links
-          if (link.includes("uddg=")) {
-            const urlParams = new URLSearchParams(link.split("?")[1]);
-            link = urlParams.get("uddg") || link;
-          }
-
-          // Remove tracking parameters
-          try {
-            const urlObj = new URL(link);
-            const trackingParams = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "fbclid", "gclid"];
-            trackingParams.forEach(param => urlObj.searchParams.delete(param));
-            link = urlObj.toString();
-          } catch (e) {
-            // Invalid URL, skip
-            return;
-          }
-
-          if (link && !seenLinks.has(link)) {
-            seenLinks.add(link);
-            const domain = new URL(link).hostname;
-            
-            results.push({
-              id: `ddg-${currentPage}-${idx}-${Math.random().toString(36).substr(2, 9)}`,
-              url: link,
-              // Use favicon as thumbnail to keep the grid visual
-              thumbnail: `https://www.google.com/s2/favicons?domain=${domain}&sz=128`,
-              source: "DuckDuckGo",
-              sourceUrl: link,
-              title: `${title} - ${snippet}`,
-            });
-          }
-        }
-      });
+      const data = await searchRes.json();
+      const results = data.results || [];
 
       setSearchProgress(90);
 
-      if (results.length === 0 && !isLoadMore) {
-        setError("No results found. Try another search.");
-      } else {
-        const newImages = isLoadMore ? [...images, ...results] : results;
-        setImages(newImages);
-        if (!isLoadMore) {
-          setSearchCache(prev => ({ ...prev, [keyword]: results }));
-        }
-        setPage(currentPage);
-        setHasMore(results.length >= 20);
+      if (results.length === 0) {
+        if (!isLoadMore) setError("No results found. Try a different search term.");
+        setHasMore(false);
+        return;
       }
+
+      const newImages = isLoadMore ? [...images, ...results] : results;
+      
+      // Deduplicate by URL to ensure no duplicates
+      const uniqueImages = Array.from(
+        new Map(newImages.map(item => [item.url, item])).values()
+      );
+      
+      setImages(uniqueImages);
+      if (!isLoadMore) {
+        setSearchCache(prev => ({ ...prev, [fullKeyword]: uniqueImages }));
+      }
+      setPage(currentPage);
+      setHasMore(results.length >= 20);
+
     } catch (err: any) {
-      setError(err.message || "An error occurred during search.");
+      console.error("Search error details:", err);
+      setError(`Search failed: ${err.message || "Unknown error"}. Please try again.`);
     } finally {
       setIsSearching(false);
       setSearchProgress(100);
@@ -222,6 +141,19 @@ export function ImageDatasetCollector() {
 
   const filteredImages = images.filter(img => {
     if (filterSource !== "All" && img.source !== filterSource) return false;
+    
+    // Quality filter
+    if (filterQuality === "High (500px+)") {
+      if (img.width && img.height && (img.width < 500 || img.height < 500)) return false;
+    } else if (filterQuality === "Ultra (1000px+)") {
+      if (img.width && img.height && (img.width < 1000 || img.height < 1000)) return false;
+    }
+
+    // Exclude irrelevant patterns/designs but keep cosplay and characters
+    const excludedTerms = ['pattern', 'texture', 'background', 'logo', 'vector', 'clipart'];
+    const titleLower = img.title.toLowerCase();
+    if (excludedTerms.some(term => titleLower.includes(term))) return false;
+
     if (filterOrientation !== "All") {
       if (!img.width || !img.height) return false;
       const ratio = img.width / img.height;
@@ -234,39 +166,27 @@ export function ImageDatasetCollector() {
 
   const downloadSingleImage = async (img: ImageData) => {
     try {
-      const content = `Title: ${img.title}\nURL: ${img.url}\nSource: DuckDuckGo Web Search`;
-      const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+      setStatusMessage(`Downloading ${img.title.substring(0, 20)}...`);
+      const blob = await fetchImageBlob(img.url);
+      if (!blob) throw new Error("Could not download image");
+      
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `search_result_${img.id}.txt`;
+      const ext = img.url.split('.').pop()?.split('?')[0] || 'jpg';
+      const safeExt = ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext.toLowerCase()) ? ext : 'jpg';
+      a.download = `${img.title.replace(/[^a-z0-9]/gi, '_').substring(0, 30)}_${img.id}.${safeExt}`;
       a.click();
       URL.revokeObjectURL(url);
-      
-      // Log transaction
-      if (user && toolId) {
-        await executeTool(user.id, toolId, 1); // Charge 1 credit for single save
-      }
-      
-      // Update local user state if not admin
-      if (user && user.role !== 'admin') {
-        updateUser({ 
-          credit_balance: user.credit_balance - 1,
-          total_spent: (user.total_spent || 0) + 1
-        });
-      }
+      setStatusMessage("");
     } catch (err) {
-      console.error("Failed to save result info:", err);
+      console.error("Failed to download image:", err);
+      setError("Failed to download image. It might be protected.");
+      setTimeout(() => setError(null), 3000);
     }
   };
 
   const generateDataset = async () => {
-    if (!user) return;
-    if (user.credit_balance < creditCost) {
-      setError("Insufficient credits.");
-      return;
-    }
-
     const resultsToDownload = filteredImages.slice(0, selectedCount);
     if (resultsToDownload.length === 0) return;
 
@@ -278,45 +198,45 @@ export function ImageDatasetCollector() {
       const zip = new JSZip();
       let successCount = 0;
       
-      let linksList = "DUCKDUCKGO SEARCH RESULTS DATASET\n";
+      let linksList = "DATASET LINKS\n";
       linksList += `Query: ${keyword}\n`;
       linksList += `Date: ${new Date().toLocaleString()}\n\n`;
 
       for (let i = 0; i < resultsToDownload.length; i++) {
         const img = resultsToDownload[i];
-        const content = `Result #${i + 1}\nTitle: ${img.title}\nURL: ${img.url}\n\n`;
-        zip.file(`result_${i + 1}.txt`, content);
-        linksList += content;
-        successCount++;
+        try {
+          const blob = await fetchImageBlob(img.url);
+          if (blob) {
+            const ext = img.url.split('.').pop()?.split('?')[0] || 'jpg';
+            const safeExt = ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext.toLowerCase()) ? ext : 'jpg';
+            zip.file(`image_${i + 1}_${img.id}.${safeExt}`, blob);
+            successCount++;
+          }
+        } catch (e) {
+          console.warn(`Failed to download ${img.url}`);
+        }
+        
+        linksList += `Result #${i + 1}\nTitle: ${img.title}\nURL: ${img.url}\n\n`;
         setDownloadProgress(Math.round(((i + 1) / resultsToDownload.length) * 100));
       }
       
       zip.file('all_links.txt', linksList);
 
       if (successCount === 0) {
-        throw new Error("Failed to collect any results.");
+        throw new Error("Failed to download any images. They might be protected by CORS.");
       }
 
       setStatusMessage("Zipping files...");
       const zipBlob = await zip.generateAsync({ type: "blob" });
       
-      if (toolId && user) {
-        await executeTool(user.id, toolId, creditCost);
-      }
-      
-      updateUser({ 
-        credit_balance: user.credit_balance - creditCost,
-        total_spent: (user.total_spent || 0) + creditCost
-      });
-
       const url = URL.createObjectURL(zipBlob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${keyword.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_web_dataset.zip`;
+      a.download = `${keyword.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_dataset.zip`;
       a.click();
       URL.revokeObjectURL(url);
       
-      setStatusMessage(`Successfully collected ${successCount} results!`);
+      setStatusMessage(`Successfully collected ${successCount} images!`);
       setTimeout(() => setStatusMessage(""), 3000);
 
     } catch (err: any) {
@@ -333,103 +253,53 @@ export function ImageDatasetCollector() {
   const getOptimizedThumbnail = (url: string) => {
     if (!url) return '';
     // Use weserv.nl for fast, resized, webp previews (low quality for speed)
-    // We use a relatively small size (300px) and low quality (50) to ensure fast loading
-    return `https://wsrv.nl/?url=${encodeURIComponent(url)}&w=300&h=300&fit=cover&output=webp&q=50`;
+    // We use a relatively small width (400px) and let height adjust automatically to preserve aspect ratio
+    return `https://wsrv.nl/?url=${encodeURIComponent(url)}&w=400&output=webp&q=50`;
   };
 
   return (
     <div className="max-w-7xl mx-auto">
-      <div className="mb-8 flex items-center justify-between">
-        <div>
-          <Link to="/" className="inline-flex items-center text-slate-500 hover:text-indigo-600 mb-2 transition-colors">
-            <ChevronLeft className="w-4 h-4 mr-1" />
-            Back to Dashboard
-          </Link>
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-white flex items-center">
-            <Layers className="w-8 h-8 mr-3 text-indigo-600" />
+      <div className="mb-8 flex flex-col items-center justify-center text-center pt-8 pb-4">
+        <Link to="/" className="inline-flex items-center text-slate-500 hover:text-indigo-600 mb-6 transition-colors">
+          <ChevronLeft className="w-4 h-4 mr-1" />
+          Back to Dashboard
+        </Link>
+        <div className="flex items-center justify-center mb-4">
+          <Layers className="w-12 h-12 mr-4 text-indigo-600" />
+          <h1 className="text-4xl font-bold text-slate-900 dark:text-white">
             Image Dataset Collector
           </h1>
-          <p className="text-slate-500 dark:text-slate-400 mt-1">
-            Search and download large image datasets from multiple public sources.
-          </p>
         </div>
+        <p className="text-slate-500 dark:text-slate-400 max-w-2xl text-lg">
+          Search and download high-quality, Pinterest-style aesthetic image datasets from multiple public sources.
+        </p>
       </div>
 
-      <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-sm border border-slate-100 dark:border-slate-800 mb-8">
-        <form onSubmit={handleSearch} className="flex gap-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-            <input
-              type="text"
-              value={keyword}
-              onChange={(e) => setKeyword(e.target.value)}
-              placeholder="Search for anime, characters, cosplay, pfps..."
-              className="w-full pl-12 pr-4 py-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all dark:text-white font-medium text-lg"
-            />
-          </div>
+      <div className="max-w-4xl mx-auto mb-12">
+        <form onSubmit={handleSearch} className="relative flex items-center shadow-sm hover:shadow-md transition-shadow rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-transparent">
+          <Search className="absolute left-6 top-1/2 -translate-y-1/2 w-6 h-6 text-slate-400" />
+          <input
+            type="text"
+            value={keyword}
+            onChange={(e) => setKeyword(e.target.value)}
+            placeholder="Search for aesthetic images, wallpapers, art..."
+            className="w-full pl-16 pr-36 py-5 bg-transparent outline-none dark:text-white font-medium text-lg rounded-full"
+          />
           <button
             type="submit"
             disabled={isSearching || !keyword.trim()}
-            className="px-8 py-4 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 dark:shadow-none disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+            className="absolute right-2 top-1/2 -translate-y-1/2 px-8 py-3 bg-indigo-600 text-white font-bold rounded-full hover:bg-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
           >
-            {isSearching ? <Loader2 className="w-6 h-6 animate-spin" /> : "Search"}
+            {isSearching ? <Loader2 className="w-5 h-5 animate-spin" /> : "Search"}
           </button>
         </form>
 
-        <div className="mt-6 flex flex-col md:flex-row gap-6">
-          <div className="flex-1">
-            <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-3">
-              Character Variants (Special Mode)
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {variants.map((variant) => (
-                <button
-                  key={variant.id}
-                  type="button"
-                  onClick={() => toggleVariant(variant.id)}
-                  className={`px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${
-                    activeVariants.includes(variant.id)
-                      ? `${variant.color} text-white shadow-md scale-105`
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
-                  }`}
-                >
-                  {activeVariants.includes(variant.id) && <CheckCircle2 className="w-4 h-4" />}
-                  {variant.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="w-full md:w-64">
-            <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-3">
-              Content Safety
-            </label>
-            <button
-              type="button"
-              onClick={() => setNsfwEnabled(!nsfwEnabled)}
-              className={`w-full px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center justify-between border-2 ${
-                nsfwEnabled
-                  ? 'bg-red-50 border-red-500 text-red-600 dark:bg-red-900/20'
-                  : 'bg-slate-50 border-slate-200 text-slate-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400'
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <AlertCircle className={`w-4 h-4 ${nsfwEnabled ? 'text-red-500' : 'text-slate-400'}`} />
-                Explicit Content
-              </div>
-              <div className={`w-10 h-5 rounded-full relative transition-colors ${nsfwEnabled ? 'bg-red-500' : 'bg-slate-300 dark:bg-slate-600'}`}>
-                <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${nsfwEnabled ? 'left-6' : 'left-1'}`} />
-              </div>
-            </button>
-          </div>
-        </div>
-
-        <div className="mt-6">
-          <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-3">
-            Popular Anime Characters
-          </label>
-          <div className="flex flex-wrap gap-2">
-            {animeCharacters.map((char) => (
+        <div className="mt-8 text-center">
+          <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mb-4">
+            Popular Searches
+          </p>
+          <div className="flex flex-wrap justify-center gap-2 max-w-3xl mx-auto">
+            {popularSearches.map((char) => (
               <button
                 key={char}
                 type="button"
@@ -437,7 +307,7 @@ export function ImageDatasetCollector() {
                   setKeyword(char);
                   handleSearch();
                 }}
-                className="px-3 py-1.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 text-xs font-bold rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors border border-indigo-100 dark:border-indigo-800"
+                className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-sm font-medium rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors border border-transparent hover:border-slate-300 dark:hover:border-slate-600"
               >
                 {char}
               </button>
@@ -446,7 +316,7 @@ export function ImageDatasetCollector() {
         </div>
 
         {isSearching && (
-          <div className="mt-6">
+          <div className="mt-8 max-w-2xl mx-auto">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400 flex items-center">
                 <Loader2 className="w-4 h-4 animate-spin mr-2" />
@@ -464,7 +334,7 @@ export function ImageDatasetCollector() {
         )}
 
         {error && (
-          <div className="mt-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800/50 rounded-2xl flex items-start">
+          <div className="mt-6 max-w-2xl mx-auto p-4 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800/50 rounded-2xl flex items-start">
             <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 mr-3 flex-shrink-0 mt-0.5" />
             <p className="text-sm text-red-600 dark:text-red-400 font-medium">{error}</p>
           </div>
@@ -482,6 +352,19 @@ export function ImageDatasetCollector() {
               </h3>
               
               <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Quality</label>
+                  <select 
+                    value={filterQuality}
+                    onChange={(e) => setFilterQuality(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none dark:text-white text-sm"
+                  >
+                    <option value="Any">Any Quality</option>
+                    <option value="High (500px+)">High (500px+)</option>
+                    <option value="Ultra (1000px+)">Ultra (1000px+)</option>
+                  </select>
+                </div>
+
                 <div>
                   <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Source</label>
                   <select 
@@ -565,15 +448,15 @@ export function ImageDatasetCollector() {
               <h2 className="text-xl font-bold text-slate-900 dark:text-white">Results ({filteredImages.length})</h2>
             </div>
             
-            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
+            <div className="columns-2 md:columns-3 xl:columns-4 gap-4 space-y-4">
               {filteredImages.map((img) => (
-                <div key={img.id} className="group relative aspect-square bg-slate-100 dark:bg-slate-800 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700">
+                <div key={img.id} className="group relative break-inside-avoid bg-slate-100 dark:bg-slate-800 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-xl transition-all duration-300">
                   <img 
                     src={getOptimizedThumbnail(img.thumbnail)} 
                     alt={img.title}
                     loading="lazy"
                     referrerPolicy="no-referrer"
-                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                    className="w-full h-auto block transition-transform duration-500 group-hover:scale-105"
                     onError={(e) => {
                       const target = e.target as HTMLImageElement;
                       if (!target.dataset.triedThumb) {
@@ -608,18 +491,18 @@ export function ImageDatasetCollector() {
                     <div className="flex gap-2">
                       <button 
                         onClick={() => downloadSingleImage(img)}
-                        className="flex-1 py-1.5 bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center"
+                        className="flex-1 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-full transition-colors flex items-center justify-center shadow-lg"
                       >
-                        <Download className="w-3 h-3 mr-1" /> Save
+                        <Download className="w-4 h-4 mr-1.5" /> Save
                       </button>
                       <a 
                         href={img.sourceUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="px-2 py-1.5 bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white rounded-lg transition-colors flex items-center justify-center"
+                        className="w-10 h-10 bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white rounded-full transition-colors flex items-center justify-center"
                         title="Open Source"
                       >
-                        <ExternalLink className="w-3 h-3" />
+                        <ExternalLink className="w-4 h-4" />
                       </a>
                     </div>
                   </div>
@@ -652,6 +535,31 @@ export function ImageDatasetCollector() {
                 <p className="text-slate-500 dark:text-slate-400 font-medium">No images match your filters.</p>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Waifu Warning Modal */}
+      {showWaifuWarning && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 max-w-md w-full shadow-2xl border border-pink-200 dark:border-pink-900/50 transform animate-in zoom-in-95 duration-200">
+            <div className="text-center">
+              <div className="w-20 h-20 bg-pink-100 dark:bg-pink-900/30 rounded-full flex items-center justify-center mx-auto mb-6">
+                <AlertCircle className="w-10 h-10 text-pink-500" />
+              </div>
+              <h3 className="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+                Warning!
+              </h3>
+              <p className="text-lg text-slate-600 dark:text-slate-300 mb-8 font-medium">
+                She's Tuijbialnajah's waifu, be careful 😾🔪
+              </p>
+              <button
+                onClick={() => setShowWaifuWarning(false)}
+                className="w-full py-4 bg-pink-500 text-white font-bold rounded-xl hover:bg-pink-600 transition-all shadow-lg shadow-pink-500/20"
+              >
+                I Understand
+              </button>
+            </div>
           </div>
         </div>
       )}

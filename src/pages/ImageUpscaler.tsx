@@ -14,15 +14,9 @@ import {
   ArrowRight,
   Zap
 } from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
-import { collection, query, where, getDocs, limit } from "firebase/firestore";
-import { db } from "../firebase";
-import { executeTool } from "../lib/toolService";
+import { Link } from "react-router-dom";
 
 export function ImageUpscaler() {
-  const { user, updateUser } = useAuth();
-  const navigate = useNavigate();
   const [originalImage, setOriginalImage] = useState<string | null>(null);
   const [upscaledImage, setUpscaledImage] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -31,34 +25,9 @@ export function ImageUpscaler() {
   const [scale, setScale] = useState<2 | 4 | 8>(2);
   const [sliderPosition, setSliderPosition] = useState(50);
   const [originalRes, setOriginalRes] = useState<{ w: number; h: number } | null>(null);
-  const [toolId, setToolId] = useState<string | null>(null);
-  const [creditCost, setCreditCost] = useState<number>(10);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const fetchToolData = async () => {
-      try {
-        const toolsRef = collection(db, "tools");
-        const q = query(toolsRef, where("tool_name", "==", "Image Upscaler"), limit(1));
-        const querySnapshot = await getDocs(q);
-        
-        if (!querySnapshot.empty) {
-          const doc = querySnapshot.docs[0];
-          setToolId(doc.id);
-          if (doc.data().credit_cost !== undefined) {
-            setCreditCost(doc.data().credit_cost);
-          }
-        } else {
-          console.log("Tool 'Image Upscaler' not found in database.");
-        }
-      } catch (err) {
-        console.error("Error fetching tool data:", err);
-      }
-    };
-    fetchToolData();
-  }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -105,12 +74,6 @@ export function ImageUpscaler() {
 
   const handleUpscale = async () => {
     if (!originalImage) return;
-
-    const isAdmin = user?.role === "admin";
-    if (!isAdmin && user && user.credit_balance < creditCost) {
-      setError("Insufficient credits to upscale this image.");
-      return;
-    }
 
     setIsProcessing(true);
     setError(null);
@@ -162,19 +125,6 @@ export function ImageUpscaler() {
 
       const upscaledDataUrl = currentCanvas.toDataURL('image/png', 1.0);
 
-      // Deduct credits after successful processing
-      if (toolId && user) {
-        await executeTool(user.id, toolId);
-      }
-
-      // Update local user state if not admin
-      if (user && !isAdmin) {
-        updateUser({ 
-          credit_balance: user.credit_balance - creditCost,
-          total_spent: (user.total_spent || 0) + creditCost
-        });
-      }
-
       setUpscaledImage(upscaledDataUrl);
       setProgress(100);
     } catch (err: any) {
@@ -218,14 +168,6 @@ export function ImageUpscaler() {
               <Sparkles className="w-6 h-6 ml-2 text-indigo-500" />
             </h1>
             <p className="text-slate-500 dark:text-slate-400">Enhance and upscale your images up to 8x</p>
-          </div>
-        </div>
-        
-        <div className="hidden sm:flex items-center bg-indigo-50 dark:bg-indigo-900/20 px-4 py-2 rounded-lg border border-indigo-100 dark:border-indigo-800">
-          <span className="text-sm font-medium text-indigo-800 dark:text-indigo-300">Cost:</span>
-          <div className="flex items-center ml-2 text-indigo-600 dark:text-indigo-400 font-bold">
-            <span className="mr-1">💳</span>
-            {creditCost} Credits
           </div>
         </div>
       </div>
@@ -303,13 +245,6 @@ export function ImageUpscaler() {
 
               {!upscaledImage ? (
                 <div className="space-y-4 pt-4 border-t border-slate-100 dark:border-slate-800">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-slate-500 dark:text-slate-400">Cost</span>
-                    <span className="font-bold text-amber-600 dark:text-amber-400 flex items-center">
-                      <span className="mr-1">💳</span>
-                      {creditCost} Credits
-                    </span>
-                  </div>
                   <button 
                     onClick={handleUpscale}
                     disabled={isProcessing}

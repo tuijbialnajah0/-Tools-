@@ -10,10 +10,6 @@ import {
   AlertCircle
 } from "lucide-react";
 import { Link } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
-import { collection, query, where, getDocs, limit } from "firebase/firestore";
-import { db } from "../firebase";
-import { executeTool } from "../lib/toolService";
 import Editor from "react-simple-code-editor";
 import Prism from "prismjs";
 import "prismjs/themes/prism-tomorrow.css";
@@ -47,33 +43,11 @@ const LANGUAGES = [
 ];
 
 export function SmartCodeGenerator() {
-  const { user, updateUser } = useAuth();
   const [code, setCode] = useState("");
   const [detectedLangId, setDetectedLangId] = useState("text");
   const [fileName, setFileName] = useState("untitled");
   const [error, setError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [toolId, setToolId] = useState<string | null>(null);
-  const [creditCost, setCreditCost] = useState(5);
-
-  useEffect(() => {
-    const fetchToolId = async () => {
-      try {
-        const toolsRef = collection(db, "tools");
-        const q = query(toolsRef, where("tool_name", "==", "Smart Code Generator"), limit(1));
-        const querySnapshot = await getDocs(q);
-        
-        if (!querySnapshot.empty) {
-          const doc = querySnapshot.docs[0];
-          setToolId(doc.id);
-          setCreditCost(doc.data().credit_cost);
-        }
-      } catch (err) {
-        console.error("Error fetching tool ID:", err);
-      }
-    };
-    fetchToolId();
-  }, []);
 
   const detectLanguage = () => {
     if (!code.trim()) {
@@ -118,28 +92,10 @@ export function SmartCodeGenerator() {
       return;
     }
 
-    const isAdmin = user?.role === "admin";
-    if (!isAdmin && user && user.credit_balance < creditCost) {
-      setError("Insufficient credits to download this file.");
-      return;
-    }
-
     setIsProcessing(true);
     setError(null);
 
     try {
-      // Deduct credits
-      if (toolId && user) {
-        await executeTool(user.id, toolId);
-      }
-
-      if (user && !isAdmin) {
-        updateUser({ 
-          credit_balance: user.credit_balance - creditCost,
-          total_spent: (user.total_spent || 0) + creditCost
-        });
-      }
-
       // Generate File
       const currentLang = LANGUAGES.find(l => l.id === detectedLangId) || LANGUAGES[LANGUAGES.length - 1];
       const fullFileName = `${fileName || "untitled"}.${currentLang.ext}`;
@@ -193,14 +149,6 @@ export function SmartCodeGenerator() {
               <Code2 className="w-6 h-6 ml-2 text-indigo-500" />
             </h1>
             <p className="text-slate-500 dark:text-slate-400">Detect language and export code to files instantly</p>
-          </div>
-        </div>
-        
-        <div className="hidden sm:flex items-center bg-indigo-50 dark:bg-indigo-900/20 px-4 py-2 rounded-lg border border-indigo-100 dark:border-indigo-800">
-          <span className="text-sm font-medium text-indigo-800 dark:text-indigo-300">Cost:</span>
-          <div className="flex items-center ml-2 text-indigo-600 dark:text-indigo-400 font-bold">
-            <span className="mr-1">💳</span>
-            {creditCost} Credits
           </div>
         </div>
       </div>
@@ -295,13 +243,6 @@ export function SmartCodeGenerator() {
             </div>
 
             <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
-              <div className="flex items-center justify-between text-sm mb-4">
-                <span className="text-slate-500 dark:text-slate-400">Download Cost</span>
-                <span className="font-bold text-amber-600 dark:text-amber-400 flex items-center">
-                  <span className="mr-1">💳</span>
-                  {creditCost} Credits
-                </span>
-              </div>
               <button 
                 onClick={handleDownload}
                 disabled={isProcessing || !code.trim()}

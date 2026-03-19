@@ -15,71 +15,33 @@ import {
   Layers,
   Sparkles
 } from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
-import { collection, query, where, getDocs, limit } from "firebase/firestore";
-import { db } from "../firebase";
-import { executeTool } from "../lib/toolService";
+import { Link } from "react-router-dom";
 import { removeBackground } from "@imgly/background-removal";
 
 export function BackgroundRemover() {
-  const { user, updateUser } = useAuth();
-  const navigate = useNavigate();
   const [originalImage, setOriginalImage] = useState<string | null>(null);
   const [processedImage, setProcessedImage] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
+  const [progressText, setProgressText] = useState("Processing...");
   const [viewMode, setViewMode] = useState<"side-by-side" | "slider" | "single">("single");
   const [sliderPosition, setSliderPosition] = useState(50);
   const [bgType, setBgType] = useState<"transparent" | "color" | "gradient" | "blur">("transparent");
   const [bgColor, setBgColor] = useState("#ffffff");
   const [bgGradient, setBgGradient] = useState("linear-gradient(135deg, #667eea 0%, #764ba2 100%)");
   const [blurAmount, setBlurAmount] = useState(10);
-  const [toolId, setToolId] = useState<string | null>(null);
-  const [creditCost, setCreditCost] = useState<number>(10);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Removed simulated progress to use actual progress from the library
   useEffect(() => {
-    const fetchToolData = async () => {
-      try {
-        const toolsRef = collection(db, "tools");
-        const q = query(toolsRef, where("tool_name", "==", "Background Remover"), limit(1));
-        const querySnapshot = await getDocs(q);
-        
-        if (!querySnapshot.empty) {
-          const doc = querySnapshot.docs[0];
-          setToolId(doc.id);
-          if (doc.data().credit_cost !== undefined) {
-            setCreditCost(doc.data().credit_cost);
-          }
-        }
-      } catch (err) {
-        console.error("Error fetching tool data:", err);
-      }
-    };
-    fetchToolData();
-  }, []);
-
-  // Simulated progress for better UX since the library's progress is per-asset and jumpy
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (isProcessing) {
-      setProgress(0);
-      interval = setInterval(() => {
-        setProgress((prev) => {
-          if (prev < 85) return prev + Math.floor(Math.random() * 5) + 1;
-          if (prev < 95) return prev + 1;
-          return prev;
-        });
-      }, 500);
-    } else if (processedImage) {
+    if (processedImage) {
       setProgress(100);
+      setProgressText("Complete!");
     }
-    return () => clearInterval(interval);
-  }, [isProcessing, processedImage]);
+  }, [processedImage]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -119,62 +81,24 @@ export function BackgroundRemover() {
   const handleRemoveBackground = async () => {
     if (!originalImage) return;
 
-    const isAdmin = user?.role === "admin";
-    if (!isAdmin && user && user.credit_balance < creditCost) {
-      setError("Insufficient credits to process this image.");
-      return;
-    }
-
     setIsProcessing(true);
     setError(null);
     setProgress(0);
+    setProgressText("Initializing offline model...");
 
     try {
-      // Process image first
-      let resultBlob: Blob;
-      
-      try {
-        // 1. Try premium APIs via our backend
-        const response = await fetch('/api/remove-bg', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ image: originalImage }),
-        });
-
-        if (!response.ok) {
-          throw new Error('Premium API failed or not configured');
+      // Use local @imgly/background-removal (Offline capable after first download)
+      const resultBlob = await removeBackground(originalImage, {
+        progress: (key, current, total) => {
+          const percent = Math.round((current / total) * 100);
+          if (key.includes("fetch")) {
+            setProgressText(`Downloading AI Model: ${percent}%`);
+          } else {
+            setProgressText(`Processing Image: ${percent}%`);
+          }
+          setProgress(percent);
         }
-
-        const data = await response.json();
-        if (data.result) {
-          // Convert base64 result back to blob
-          const res = await fetch(data.result);
-          resultBlob = await res.blob();
-          console.log(`Successfully processed using ${data.source}`);
-        } else {
-          throw new Error('Invalid response from premium API');
-        }
-      } catch (apiError) {
-        // 2. Fallback to local @imgly/background-removal
-        console.log('Falling back to local AI model...', apiError);
-        resultBlob = await removeBackground(originalImage);
-      }
-
-      // Deduct credits after successful processing
-      if (toolId && user) {
-        await executeTool(user.id, toolId);
-      }
-
-      // Update local user state if not admin
-      if (user && !isAdmin) {
-        updateUser({ 
-          credit_balance: user.credit_balance - creditCost,
-          total_spent: (user.total_spent || 0) + creditCost
-        });
-      }
-
+      });
       const resultUrl = URL.createObjectURL(resultBlob);
       setProcessedImage(resultUrl);
     } catch (err: any) {
@@ -283,14 +207,6 @@ export function BackgroundRemover() {
             <p className="text-slate-500 dark:text-slate-400">AI-powered professional background removal</p>
           </div>
         </div>
-        
-        <div className="hidden sm:flex items-center bg-indigo-50 dark:bg-indigo-900/20 px-4 py-2 rounded-lg border border-indigo-100 dark:border-indigo-800">
-          <span className="text-sm font-medium text-indigo-800 dark:text-indigo-300">Cost:</span>
-          <div className="flex items-center ml-2 text-indigo-600 dark:text-indigo-400 font-bold">
-            <span className="mr-1">💳</span>
-            {creditCost} Credits
-          </div>
-        </div>
       </div>
 
       {/* Main Content */}
@@ -345,13 +261,6 @@ export function BackgroundRemover() {
 
               {!processedImage ? (
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-slate-500 dark:text-slate-400">Cost</span>
-                    <span className="font-bold text-amber-600 dark:text-amber-400 flex items-center">
-                      <span className="mr-1">💳</span>
-                      {creditCost} Credits
-                    </span>
-                  </div>
                   <button 
                     onClick={handleRemoveBackground}
                     disabled={isProcessing}
@@ -360,7 +269,7 @@ export function BackgroundRemover() {
                     {isProcessing ? (
                       <>
                         <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                        Processing {progress}%
+                        {progressText}
                       </>
                     ) : (
                       <>
@@ -566,7 +475,7 @@ export function BackgroundRemover() {
                         <div className="absolute inset-0 flex flex-col items-center justify-center z-20">
                           <div className="w-16 h-16 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-4 shadow-xl" />
                           <div className="bg-white/90 dark:bg-slate-900/90 px-4 py-2 rounded-full shadow-lg border border-indigo-100 dark:border-indigo-900">
-                            <span className="text-indigo-600 dark:text-indigo-400 font-bold">{progress}%</span>
+                            <span className="text-indigo-600 dark:text-indigo-400 font-bold">{progressText}</span>
                           </div>
                         </div>
                       )}

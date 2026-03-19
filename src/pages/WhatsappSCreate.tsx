@@ -1,10 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
-import { useAuth } from "../context/AuthContext";
 import { Link } from "react-router-dom";
 import { ChevronLeft, Upload, X, CheckCircle2, AlertCircle, Download, MessageCircle, Briefcase, Plus, Crop } from "lucide-react";
-import { db } from "../firebase";
-import { collection, query, where, getDocs } from "firebase/firestore";
-import { executeTool } from "../lib/toolService";
 import JSZip from "jszip";
 import CropWorker from "../workers/cropWorker?worker";
 
@@ -17,14 +13,11 @@ interface StickerFile {
 }
 
 export function WhatsappSCreate() {
-  const { user, updateUser } = useAuth();
   const [stickers, setStickers] = useState<StickerFile[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [resultUrl, setResultUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [toolId, setToolId] = useState<number | null>(null);
-  const [baseCost, setBaseCost] = useState<number>(50);
   const [packName, setPackName] = useState("My Sticker Pack");
   const [showInstructions, setShowInstructions] = useState(false);
   const [step, setStep] = useState<1 | 2 | 3>(1);
@@ -46,36 +39,6 @@ export function WhatsappSCreate() {
       setStep(1);
     }
   }, [stickers.length]);
-
-  useEffect(() => {
-    const fetchToolData = async () => {
-      try {
-        const toolsRef = collection(db, "tools");
-        const q = query(
-          toolsRef, 
-          where("enabled", "==", true)
-        );
-        const querySnapshot = await getDocs(q);
-        
-        // Find the tool by name manually since 'ilike' isn't directly supported in basic queries
-        const toolDoc = querySnapshot.docs.find(doc => {
-          const name = doc.data().tool_name || "";
-          return name.toLowerCase().includes("whatsapp-s-create") || name.toLowerCase().includes("whatsapp s create");
-        });
-          
-        if (toolDoc) {
-          setToolId(toolDoc.id as any);
-          const data = toolDoc.data();
-          if (data.credit_cost !== undefined) {
-            setBaseCost(data.credit_cost);
-          }
-        }
-      } catch (err) {
-        console.error("Error fetching tool data:", err);
-      }
-    };
-    fetchToolData();
-  }, []);
 
   // Cleanup previews on unmount
   useEffect(() => {
@@ -249,11 +212,6 @@ export function WhatsappSCreate() {
   const createStickerPack = async () => {
     if (stickers.length === 0) return;
 
-    if (user && user.credit_balance < creditCost) {
-      setError("Insufficient credits.");
-      return;
-    }
-
     setIsProcessing(true);
     setError(null);
     setProgress(0);
@@ -262,7 +220,7 @@ export function WhatsappSCreate() {
       const zip = new JSZip();
       
       zip.file("title.txt", packName.trim() || "My Sticker Pack");
-      zip.file("author.txt", "ͲႮᏆᎫᏴᏆᎪᏞΝΑᎫΑᎻ·Kҽɳƈԋσ Aʅʅιαɳƈҽ");
+      zip.file("author.txt", "ͲႮᏆᎫᏴᏆᎪᏞΝΑᎫΑΉ·Kҽɳƈԋσ Aʅʅιαɳƈҽ");
       
       const trayBlob = await convertToWebP(stickers[0].file, 96);
       zip.file("tray.png", trayBlob);
@@ -276,17 +234,6 @@ export function WhatsappSCreate() {
       const zipBlob = await zip.generateAsync({ type: "blob" });
       const customBlob = new Blob([zipBlob], { type: "application/octet-stream" });
       
-      const success = await executeTool(user!.id, toolId?.toString() || "whatsapp-s-create", creditCost);
-      
-      if (!success) {
-        throw new Error("Failed to deduct credits. Please check your balance.");
-      }
-      
-      updateUser({ 
-        credit_balance: user!.credit_balance - creditCost,
-        total_spent: (user!.total_spent || 0) + creditCost
-      });
-
       const url = URL.createObjectURL(customBlob);
       setResultUrl(url);
       setProgress(100);
@@ -338,9 +285,6 @@ export function WhatsappSCreate() {
               Create WhatsApp sticker packs from your pictures.
             </p>
           </div>
-        </div>
-        <div className="bg-green-50 dark:bg-green-900/20 px-4 py-2 rounded-xl border border-green-100 dark:border-green-800/50">
-          <span className="text-sm font-medium text-green-600 dark:text-green-400">Cost: {creditCost} Credits</span>
         </div>
       </div>
 

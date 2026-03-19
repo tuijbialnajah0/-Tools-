@@ -17,21 +17,14 @@ import {
   MessageCircle
 } from "lucide-react";
 import { Link } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
-import { collection, query, where, getDocs, limit } from "firebase/firestore";
-import { db } from "../firebase";
-import { executeTool } from "../lib/toolService";
 import { QRCodeCanvas, QRCodeSVG } from "qrcode.react";
 
 type QrType = "url" | "text" | "email" | "phone" | "wifi" | "whatsapp";
 
 export function QrGenerator() {
-  const { user, updateUser } = useAuth();
   const [error, setError] = useState<string | null>(null);
-  const [hasPaid, setHasPaid] = useState(false);
-  const [toolId, setToolId] = useState<string | null>(null);
-  const [creditCost, setCreditCost] = useState(5);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isGenerated, setIsGenerated] = useState(false);
 
   // QR Content State
   const [qrType, setQrType] = useState<QrType>("url");
@@ -58,38 +51,18 @@ export function QrGenerator() {
   const [bgColor, setBgColor] = useState("#ffffff");
   const [margin, setMargin] = useState(2);
 
+  // Reset generated state when content or customization changes
   useEffect(() => {
-    const fetchToolId = async () => {
-      try {
-        const toolsRef = collection(db, "tools");
-        const q = query(toolsRef, where("tool_name", "==", "QR Code Generator"), limit(1));
-        const querySnapshot = await getDocs(q);
-        
-        if (!querySnapshot.empty) {
-          const doc = querySnapshot.docs[0];
-          setToolId(doc.id);
-          if (doc.data().credit_cost !== undefined) {
-            setCreditCost(doc.data().credit_cost);
-          }
-        }
-      } catch (err) {
-        console.error("Error fetching tool data:", err);
-      }
-    };
-    fetchToolId();
-  }, []);
-
-  // Reset payment state when content changes significantly
-  useEffect(() => {
-    setHasPaid(false);
-  }, [qrType, url, text, email, phone, ssid, waType, waPhone, waMessage, waGroupUrl]);
+    setIsGenerated(false);
+  }, [qrType, url, text, email, phone, ssid, waType, waPhone, waMessage, waGroupUrl, size, fgColor, bgColor, margin]);
 
   const getQrValue = () => {
     switch (qrType) {
       case "url":
         return url || "https://example.com";
       case "text":
-        return text || "Enter some text";
+        const baseUrl = window.location.origin;
+        return text ? `${baseUrl}/text-viewer?t=${encodeURIComponent(text)}` : `${baseUrl}/text-viewer?t=Enter+some+text`;
       case "email":
         return `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
       case "phone":
@@ -109,34 +82,7 @@ export function QrGenerator() {
   };
 
   const handleUnlock = async () => {
-    const isAdmin = user?.role === "admin";
-    if (!isAdmin && user && user.credit_balance < creditCost) {
-      setError("Insufficient credits to generate this QR code.");
-      return;
-    }
-
-    setIsProcessing(true);
-    setError(null);
-
-    try {
-      // Deduct credits
-      if (toolId && user) {
-        await executeTool(user.id, toolId, creditCost);
-      }
-
-      if (user && !isAdmin) {
-        updateUser({ 
-          credit_balance: user.credit_balance - creditCost,
-          total_spent: (user.total_spent || 0) + creditCost
-        });
-      }
-      setHasPaid(true);
-    } catch (err) {
-      console.error(err);
-      setError("Failed to process payment.");
-    } finally {
-      setIsProcessing(false);
-    }
+    // (Removed credit logic)
   };
 
   const downloadPNG = () => {
@@ -168,6 +114,15 @@ export function QrGenerator() {
     }
   };
 
+  const handleGenerate = () => {
+    setIsProcessing(true);
+    // Simulate a short processing time for better UX
+    setTimeout(() => {
+      setIsGenerated(true);
+      setIsProcessing(false);
+    }, 600);
+  };
+
   const handleClear = () => {
     setUrl("");
     setText("");
@@ -180,8 +135,8 @@ export function QrGenerator() {
     setWaPhone("");
     setWaMessage("");
     setWaGroupUrl("");
-    setHasPaid(false);
     setError(null);
+    setIsGenerated(false);
   };
 
   const qrValue = getQrValue();
@@ -203,14 +158,6 @@ export function QrGenerator() {
               <QrCode className="w-6 h-6 ml-2 text-indigo-500" />
             </h1>
             <p className="text-slate-500 dark:text-slate-400">Instantly create custom QR codes offline</p>
-          </div>
-        </div>
-        
-        <div className="hidden sm:flex items-center bg-indigo-50 dark:bg-indigo-900/20 px-4 py-2 rounded-lg border border-indigo-100 dark:border-indigo-800">
-          <span className="text-sm font-medium text-indigo-800 dark:text-indigo-300">Cost:</span>
-          <div className="flex items-center ml-2 text-indigo-600 dark:text-indigo-400 font-bold">
-            <span className="mr-1">💳</span>
-            {creditCost} Credits
           </div>
         </div>
       </div>
@@ -525,6 +472,26 @@ export function QrGenerator() {
             </div>
           </div>
 
+          <div className="pt-4">
+            <button
+              onClick={handleGenerate}
+              disabled={isProcessing}
+              className="w-full py-4 bg-indigo-600 text-white font-bold text-lg rounded-2xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-500/20 flex items-center justify-center disabled:opacity-70 disabled:cursor-not-allowed"
+            >
+              {isProcessing ? (
+                <>
+                  <RefreshCw className="w-6 h-6 mr-2 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <QrCode className="w-6 h-6 mr-2" />
+                  Generate QR Code
+                </>
+              )}
+            </button>
+          </div>
+
           {error && (
             <motion.div 
               initial={{ opacity: 0, scale: 0.9 }}
@@ -540,82 +507,57 @@ export function QrGenerator() {
         {/* Right Column: Preview & Download */}
         <div className="lg:col-span-1">
           <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 sticky top-8 flex flex-col items-center">
-            <h3 className="font-bold text-slate-900 dark:text-white text-lg mb-6 w-full text-center">Live Preview</h3>
+            <h3 className="font-bold text-slate-900 dark:text-white text-lg mb-6 w-full text-center">
+              {isGenerated ? "Your QR Code" : "Preview"}
+            </h3>
             
             <div className="relative w-full aspect-square flex items-center justify-center bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-100 dark:border-slate-800 overflow-hidden mb-8 p-4">
-              <div className={`transition-all duration-300 ${!hasPaid ? "blur-[6px] opacity-60 scale-95" : "scale-100"}`}>
-                {/* We render both Canvas and SVG invisibly/visibly to support both downloads */}
-                <div className="hidden">
-                  <QRCodeSVG
-                    id="qr-svg"
+              {isGenerated ? (
+                <motion.div 
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="scale-100"
+                >
+                  {/* We render both Canvas and SVG invisibly/visibly to support both downloads */}
+                  <div className="hidden">
+                    <QRCodeSVG
+                      id="qr-svg"
+                      value={qrValue}
+                      size={size}
+                      fgColor={fgColor}
+                      bgColor={bgColor}
+                      marginSize={margin}
+                      level="H"
+                    />
+                  </div>
+                  <QRCodeCanvas
+                    id="qr-canvas"
                     value={qrValue}
-                    size={size}
+                    size={240} // Fixed preview size
                     fgColor={fgColor}
                     bgColor={bgColor}
                     marginSize={margin}
                     level="H"
+                    style={{ width: '100%', height: 'auto', maxWidth: '240px', borderRadius: '8px' }}
                   />
-                </div>
-                <QRCodeCanvas
-                  id="qr-canvas"
-                  value={qrValue}
-                  size={240} // Fixed preview size
-                  fgColor={fgColor}
-                  bgColor={bgColor}
-                  marginSize={margin}
-                  level="H"
-                  style={{ width: '100%', height: 'auto', maxWidth: '240px', borderRadius: '8px' }}
-                />
-              </div>
-
-              {!hasPaid && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/20 dark:bg-black/20 backdrop-blur-[2px] z-10">
-                  <div className="w-16 h-16 bg-white dark:bg-slate-800 rounded-full flex items-center justify-center shadow-2xl mb-4">
-                    <Lock className="w-8 h-8 text-indigo-600 dark:text-indigo-400" />
-                  </div>
-                  <span className="font-bold text-slate-900 dark:text-white px-4 py-1 bg-white/80 dark:bg-black/50 rounded-full backdrop-blur-md">
-                    Preview Mode
-                  </span>
+                </motion.div>
+              ) : (
+                <div className="flex flex-col items-center justify-center text-slate-400 dark:text-slate-600">
+                  <QrCode className="w-16 h-16 mb-4 opacity-50" />
+                  <p className="text-sm font-medium text-center px-4">
+                    Fill in the details and click Generate to see your QR code
+                  </p>
                 </div>
               )}
             </div>
 
-            <div className="w-full space-y-4">
-              {!hasPaid ? (
-                <>
-                  <div className="flex items-center justify-between text-sm px-2 mb-2">
-                    <span className="text-slate-500 dark:text-slate-400">Unlock Cost</span>
-                    <span className="font-bold text-amber-600 dark:text-amber-400 flex items-center">
-                      <span className="mr-1">💳</span>
-                      {creditCost} Credits
-                    </span>
-                  </div>
-                  <button 
-                    onClick={handleUnlock}
-                    disabled={isProcessing}
-                    className="w-full py-4 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 disabled:opacity-50 transition-all shadow-lg shadow-indigo-500/20 flex items-center justify-center"
-                  >
-                    {isProcessing ? "Processing..." : (
-                      <>
-                        <Lock className="w-5 h-5 mr-2" />
-                        Unlock High-Res Downloads
-                      </>
-                    )}
-                  </button>
-                  <p className="text-xs text-center text-slate-500 dark:text-slate-400 mt-2">
-                    Unlocks unlimited downloads for this specific QR code.
-                  </p>
-                </>
-              ) : (
+            {isGenerated && (
+              <div className="w-full space-y-4">
                 <motion.div 
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   className="space-y-3"
                 >
-                  <div className="bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 text-sm font-bold px-4 py-3 rounded-xl flex items-center justify-center mb-4">
-                    <CheckCircle2 className="w-5 h-5 mr-2" />
-                    Unlocked
-                  </div>
                   <button 
                     onClick={downloadPNG}
                     className="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-500/20 flex items-center justify-center"
@@ -631,8 +573,8 @@ export function QrGenerator() {
                     Download SVG
                   </button>
                 </motion.div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

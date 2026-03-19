@@ -1,10 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
-import { useAuth } from "../context/AuthContext";
 import { Link } from "react-router-dom";
 import { ChevronLeft, Upload, X, CheckCircle2, AlertCircle, Download, MessageCircle, Video, Plus, Crop } from "lucide-react";
-import { db } from "../firebase";
-import { collection, query, where, getDocs } from "firebase/firestore";
-import { executeTool } from "../lib/toolService";
 import JSZip from "jszip";
 import { FFmpeg } from "@ffmpeg/ffmpeg";
 import { fetchFile, toBlobURL } from "@ffmpeg/util";
@@ -26,15 +22,12 @@ interface VideoSticker {
 }
 
 export function WhatsappSCreateVideo() {
-  const { user, updateUser } = useAuth();
   const [videos, setVideos] = useState<VideoSticker[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStatus, setProcessingStatus] = useState<string>("");
   const [progress, setProgress] = useState(0);
   const [resultUrl, setResultUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [toolId, setToolId] = useState<number | null>(null);
-  const [baseCost, setBaseCost] = useState<number>(350);
   const [packName, setPackName] = useState("My Animated Pack");
   const [baseLength, setBaseLength] = useState<number>(8);
   const [step, setStep] = useState<1 | 2 | 3>(1);
@@ -53,35 +46,6 @@ export function WhatsappSCreateVideo() {
       setStep(1);
     }
   }, [videos.length]);
-
-  useEffect(() => {
-    const fetchToolData = async () => {
-      try {
-        const toolsRef = collection(db, "tools");
-        const q = query(
-          toolsRef, 
-          where("enabled", "==", true)
-        );
-        const querySnapshot = await getDocs(q);
-        
-        const toolDoc = querySnapshot.docs.find(doc => {
-          const name = doc.data().tool_name || "";
-          return name.toLowerCase().includes("whatsapp-s-create video");
-        });
-          
-        if (toolDoc) {
-          setToolId(toolDoc.id as any);
-          const data = toolDoc.data();
-          if (data.credit_cost !== undefined) {
-            setBaseCost(data.credit_cost);
-          }
-        }
-      } catch (err) {
-        console.error("Error fetching tool data:", err);
-      }
-    };
-    fetchToolData();
-  }, []);
 
   // Cleanup previews on unmount
   useEffect(() => {
@@ -174,12 +138,6 @@ export function WhatsappSCreateVideo() {
   };
 
   const processVideos = async () => {
-    if (!user || !toolId) return;
-    if (user.credit_balance < baseCost) {
-      setError("Insufficient credits.");
-      return;
-    }
-
     setIsProcessing(true);
     setError(null);
     setProgress(0);
@@ -279,18 +237,6 @@ export function WhatsappSCreateVideo() {
       setResultUrl(url);
       setStep(3);
 
-      // Deduct credits
-      const success = await executeTool(user.id, toolId?.toString() || "whatsapp-s-create-video", baseCost);
-      
-      if (!success) {
-        throw new Error("Failed to deduct credits. Please check your balance.");
-      }
-
-      updateUser({ 
-        credit_balance: user.credit_balance - baseCost,
-        total_spent: (user.total_spent || 0) + baseCost
-      });
-
       setProcessingStatus("Pack ready!");
     } catch (err: any) {
       console.error("Processing error:", err);
@@ -316,9 +262,6 @@ export function WhatsappSCreateVideo() {
           <p className="text-slate-500 dark:text-slate-400 mt-1">
             Convert video clips into animated WhatsApp sticker packs.
           </p>
-        </div>
-        <div className="bg-indigo-50 dark:bg-indigo-900/20 px-4 py-2 rounded-xl border border-indigo-100 dark:border-indigo-800/50">
-          <span className="text-sm font-medium text-indigo-600 dark:text-indigo-400">Cost: {baseCost} Credits</span>
         </div>
       </div>
 

@@ -1,21 +1,15 @@
 import { useState, useEffect } from "react";
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
 import { useTools } from "../context/ToolContext";
 import { ToolManager } from "./ToolManager";
+import { ThemeEffects } from "./ThemeEffects";
 import {
-  User,
-  Trophy,
   LayoutDashboard,
   Wrench,
-  Users,
-  Settings,
-  LogOut,
   Menu,
   X,
   Sun,
   Moon,
-  Send,
   Image,
   Maximize,
   Palette,
@@ -26,13 +20,10 @@ import {
   MessageCircle,
   Activity,
   Video,
-  Heart,
+  AlertCircle,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
-import { SendCreditModal } from "./SendCreditModal";
-import { db } from "../firebase";
-import { collection, onSnapshot, doc, getDoc } from "firebase/firestore";
 
 function cn(...inputs: (string | undefined | null | false)[]) {
   return twMerge(clsx(inputs));
@@ -48,18 +39,13 @@ const TOOL_ICONS: Record<string, any> = {
   'pdf-converter': FileText,
   'whatsapp-s-create': MessageCircle,
   'whatsapp-s-create-video': Video,
-  'ide-tool': LayoutDashboard,
-  'html-viewer': FileCode,
 };
 
 export function Layout() {
-  const { user, logout } = useAuth();
   const { runningTools, removeTool } = useTools();
   const location = useLocation();
   const navigate = useNavigate();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [isSendCreditModalOpen, setIsSendCreditModalOpen] = useState(false);
-  const [favoriteTools, setFavoriteTools] = useState<any[]>([]);
   const [isDarkMode, setIsDarkMode] = useState(() => {
     if (typeof window !== "undefined") {
       return (
@@ -81,59 +67,11 @@ export function Layout() {
     }
   }, [isDarkMode]);
 
-  useEffect(() => {
-    if (!user) return;
-
-    // Set up real-time subscription for favorites using Firestore onSnapshot
-    const favoritesRef = collection(db, "profiles", user.id, "favorites");
-    
-    const unsubscribe = onSnapshot(favoritesRef, (snapshot) => {
-      const fetchTools = async () => {
-        try {
-          const toolsList: any[] = [];
-          
-          for (const favoriteDoc of snapshot.docs) {
-            const toolId = favoriteDoc.id;
-            const toolRef = doc(db, "tools", toolId);
-            const toolSnap = await getDoc(toolRef);
-            
-            if (toolSnap.exists()) {
-              toolsList.push({
-                id: toolSnap.id,
-                ...toolSnap.data()
-              });
-            }
-          }
-          
-          setFavoriteTools(toolsList);
-        } catch (err) {
-          console.error("Error fetching favorites in real-time:", err);
-        }
-      };
-      
-      fetchTools();
-    }, (error) => {
-      console.error("Favorites snapshot error:", error);
-    });
-
-    return () => {
-      unsubscribe();
-    };
-  }, [user?.id]);
-
   const toggleTheme = () => setIsDarkMode(!isDarkMode);
 
   const navItems = [
-    { name: "Dashboard", href: "/", icon: LayoutDashboard },
-    { name: "Favorites", href: "/favorites", icon: Heart },
-    { name: "Leaderboard", href: "/leaderboard", icon: Trophy },
-    { name: "Profile", href: "/profile", icon: User },
-  ];
-
-  const adminItems = [
-    { name: "Admin Overview", href: "/admin", icon: Settings },
-    { name: "Manage Users", href: "/admin/users", icon: Users },
-    { name: "Manage Tools", href: "/admin/tools", icon: Wrench },
+    { name: "All Tools", href: "/", icon: LayoutDashboard },
+    { name: "Themes", href: "/themes", icon: Palette },
   ];
 
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
@@ -149,7 +87,8 @@ export function Layout() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col md:flex-row transition-colors duration-300">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col md:flex-row transition-colors duration-300 relative">
+      <ThemeEffects />
       {/* Mobile Header */}
       <header className="md:hidden h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-4 sticky top-0 z-50">
         <div className="flex items-center">
@@ -157,12 +96,6 @@ export function Layout() {
           <span className="text-lg font-semibold text-slate-900 dark:text-white">𝙱𝙹𝙴 ~ Tools</span>
         </div>
         <div className="flex items-center space-x-2">
-          <div className="flex items-center bg-indigo-50 dark:bg-indigo-900/30 px-3 py-1.5 rounded-full mr-1 border border-indigo-100 dark:border-indigo-800/50">
-            <span className="mr-1.5">💳</span>
-            <span className="text-sm font-bold text-indigo-700 dark:text-indigo-400">
-              {user?.role === "admin" ? "Infinite" : user?.credit_balance}
-            </span>
-          </div>
           <button
             onClick={toggleTheme}
             className="p-2 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-colors"
@@ -278,177 +211,28 @@ export function Layout() {
               })}
             </>
           )}
-
-          {/* Favorite Tools */}
-          {favoriteTools.length > 0 && (
-            <>
-              <div className="pt-6 pb-2">
-                <p className="px-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center">
-                  <Heart className="w-3 h-3 mr-1.5 text-rose-500 fill-rose-500" />
-                  Favorites
-                </p>
-              </div>
-              {favoriteTools.map((tool) => {
-                const toolName = (tool.tool_name || "").trim();
-                const explicitMappings: Record<string, string> = {
-                  "Background Remover": "background-remover",
-                  "Whatsapp-S-Create": "whatsapp-s-create",
-                  "Image Upscaler": "image-upscaler",
-                  "Image Colorizer": "image-colorizer",
-                  "QR Code Generator": "qr-code-generator",
-                  "Smart Code Generator": "smart-code-generator",
-                  "Code base": "code-base",
-                  "Pdf Converter": "pdf-converter",
-                  "Whatsapp-S-Create Video": "whatsapp-s-create-video",
-                  "Integrated Development Environment (IDE)": "ide-tool",
-                  "IDE Tool": "ide-tool",
-                  "Image Dataset Collector": "image-dataset-collector",
-                  "WA ~ S generator": "wa-s-generator",
-                  "PFP Anima": "pfp-anima",
-                  "Html viewer": "html-viewer"
-                };
-                
-                const path = explicitMappings[toolName] || toolName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-                const isActive = location.pathname === `/${path}`;
-                const Icon = TOOL_ICONS[path] || Wrench;
-                
-                return (
-                  <Link
-                    key={tool.id}
-                    to={`/${path}`}
-                    onClick={closeSidebar}
-                    className={cn(
-                      "flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors",
-                      isActive
-                        ? "bg-rose-50 dark:bg-rose-900/20 text-rose-700 dark:text-rose-400"
-                        : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800",
-                    )}
-                  >
-                    <Icon
-                      className={cn(
-                        "w-5 h-5 mr-3",
-                        isActive ? "text-rose-600 dark:text-rose-400" : "text-slate-400 dark:text-slate-500",
-                      )}
-                    />
-                    <span className="truncate">{tool.tool_name}</span>
-                  </Link>
-                );
-              })}
-            </>
-          )}
-
-          {user?.role === "admin" && (
-            <>
-              <div className="pt-6 pb-2">
-                <p className="px-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                  Administration
-                </p>
-              </div>
-              {adminItems.map((item) => {
-                const isActive = location.pathname === item.href;
-                return (
-                  <Link
-                    key={item.name}
-                    to={item.href}
-                    onClick={closeSidebar}
-                    className={cn(
-                      "flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors",
-                      isActive
-                        ? "bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400"
-                        : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800",
-                    )}
-                  >
-                    <item.icon
-                      className={cn(
-                        "w-5 h-5 mr-3",
-                        isActive ? "text-indigo-700 dark:text-indigo-400" : "text-slate-400 dark:text-slate-500",
-                      )}
-                    />
-                    {item.name}
-                  </Link>
-                );
-              })}
-            </>
-          )}
-
-          <div className="pt-6 pb-2">
-            <p className="px-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-              Actions
-            </p>
-          </div>
-          <button
-            onClick={() => {
-              closeSidebar();
-              setIsSendCreditModalOpen(true);
-            }}
-            className="w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
-          >
-            <Send className="w-5 h-5 mr-3 text-slate-400 dark:text-slate-500" />
-            Send Credit
-          </button>
         </nav>
 
         <div className="p-4 border-t border-slate-200 dark:border-slate-800">
-          <div className="flex items-center justify-between mb-4 px-2">
-            <div className="flex flex-col">
-              <span className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
-                Total Credits Spent
-              </span>
-              <span className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
-                💳 {(user?.total_spent || 0).toFixed(0)}
-              </span>
-            </div>
-          </div>
-          <div className="flex items-center justify-between px-2">
-            <Link to="/profile" className="flex items-center group">
-              <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 overflow-hidden mr-3 group-hover:ring-2 group-hover:ring-indigo-500 transition-all">
-                <img 
-                  src={user?.avatar_url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${user?.id}`} 
-                  alt="Avatar" 
-                  className="w-full h-full object-cover"
-                />
-              </div>
-              <div className="flex flex-col">
-                <span className="text-sm font-bold text-slate-900 dark:text-white truncate max-w-[100px]">
-                  {user?.username || user?.email?.split('@')[0]}
-                </span>
-                <span className="text-[10px] text-slate-500 dark:text-slate-400">
-                  View Profile
-                </span>
-              </div>
-            </Link>
-            <button
-              onClick={logout}
-              className="p-2 text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 rounded-md hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-              title="Logout"
-            >
-              <LogOut className="w-5 h-5" />
-            </button>
-          </div>
+          <a 
+            href="https://chat.whatsapp.com/BBaVVm1n2WI4kzMcoeTqyl?mode=gi_t" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="w-full flex items-center justify-center px-4 py-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm font-bold rounded-lg hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors border border-red-200 dark:border-red-800/50 shadow-sm"
+          >
+            <AlertCircle className="w-4 h-4 mr-2" />
+            Report Bug
+          </a>
         </div>
       </aside>
 
       {/* Main content */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden bg-slate-50 dark:bg-slate-950">
-        {/* Desktop Header */}
-        <header className="hidden md:flex h-16 items-center justify-end px-8 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 sticky top-0 z-40">
-          <div className="flex items-center bg-indigo-50 dark:bg-indigo-900/30 px-4 py-2 rounded-full border border-indigo-100 dark:border-indigo-800/50 shadow-sm">
-            <span className="mr-2">💳</span>
-            <span className="text-sm font-bold text-indigo-700 dark:text-indigo-400">
-              {user?.role === "admin" ? "Infinite Credits" : `${user?.credit_balance} Credits`}
-            </span>
-          </div>
-        </header>
         <div className="flex-1 overflow-y-auto p-4 md:p-8 relative">
           <Outlet />
           <ToolManager />
         </div>
       </main>
-
-      <SendCreditModal 
-        isOpen={isSendCreditModalOpen} 
-        onClose={() => setIsSendCreditModalOpen(false)} 
-      />
     </div>
   );
 }

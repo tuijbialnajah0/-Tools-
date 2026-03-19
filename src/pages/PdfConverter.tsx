@@ -1,10 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
-import { useAuth } from "../context/AuthContext";
 import { Link } from "react-router-dom";
 import { ChevronLeft, Upload, CheckCircle2, AlertCircle, Download, FileImage, X, ChevronUp, ChevronDown } from "lucide-react";
-import { collection, query, where, getDocs, limit } from "firebase/firestore";
-import { db } from "../firebase";
-import { executeTool } from "../lib/toolService";
 import { jsPDF } from "jspdf";
 
 const MAX_FILE_SIZE = 250 * 1024 * 1024; // 250MB per file
@@ -15,7 +11,6 @@ interface FileWithPreview {
 }
 
 export function PdfConverter() {
-  const { user, updateUser } = useAuth();
   const [files, setFiles] = useState<FileWithPreview[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -24,30 +19,7 @@ export function PdfConverter() {
   const [resultFileName, setResultFileName] = useState<string>("");
   const [compressedResultFileName, setCompressedResultFileName] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
-  const [toolId, setToolId] = useState<string | null>(null);
-  const [creditCost, setCreditCost] = useState<number>(5);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    const fetchToolData = async () => {
-      try {
-        const toolsRef = collection(db, "tools");
-        const q = query(toolsRef, where("tool_name", "==", "Image to PDF Converter"), limit(1));
-        const querySnapshot = await getDocs(q);
-        
-        if (!querySnapshot.empty) {
-          const doc = querySnapshot.docs[0];
-          setToolId(doc.id);
-          if (doc.data().credit_cost !== undefined) {
-            setCreditCost(doc.data().credit_cost);
-          }
-        }
-      } catch (err) {
-        console.error("Error fetching tool data:", err);
-      }
-    };
-    fetchToolData();
-  }, []);
 
   // Cleanup previews on unmount
   useEffect(() => {
@@ -57,15 +29,11 @@ export function PdfConverter() {
   }, []);
 
   // Calculate dynamic credit cost based on file size (5 credits per 10 MB)
+  // (Removed credit logic)
   useEffect(() => {
     if (files.length === 0) {
-      setCreditCost(5);
       return;
     }
-    const totalBytes = files.reduce((acc, f) => acc + f.file.size, 0);
-    const totalMB = totalBytes / (1024 * 1024);
-    const calculatedCost = Math.max(5, Math.ceil(totalMB / 10) * 5);
-    setCreditCost(calculatedCost);
   }, [files]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -224,12 +192,6 @@ export function PdfConverter() {
   const handleConvert = async () => {
     if (files.length === 0) return;
 
-    const isAdmin = user?.role === "admin";
-    if (!isAdmin && user && user.credit_balance < creditCost) {
-      setError("Insufficient credits to perform this conversion.");
-      return;
-    }
-
     setIsProcessing(true);
     setError(null);
     setProgress(0);
@@ -237,19 +199,6 @@ export function PdfConverter() {
     try {
       const resultBlobs = await convertToPdf();
       if (!resultBlobs) throw new Error("Conversion failed to produce a file.");
-
-      // Deduct credits after successful processing
-      if (toolId && user) {
-        await executeTool(user.id, toolId, creditCost);
-      }
-
-      // Update local user state if not admin
-      if (user && !isAdmin) {
-        updateUser({ 
-          credit_balance: user.credit_balance - creditCost,
-          total_spent: (user.total_spent || 0) + creditCost
-        });
-      }
 
       const url = URL.createObjectURL(resultBlobs.original);
       const compressedUrl = URL.createObjectURL(resultBlobs.compressed);
@@ -296,14 +245,6 @@ export function PdfConverter() {
             <p className="text-slate-500 dark:text-slate-400 mt-1">
               Convert multiple images into a single PDF document.
             </p>
-          </div>
-        </div>
-        
-        <div className="hidden sm:flex items-center bg-indigo-50 dark:bg-indigo-900/20 px-4 py-2 rounded-lg border border-indigo-100 dark:border-indigo-800">
-          <span className="text-sm font-medium text-indigo-800 dark:text-indigo-300">Cost:</span>
-          <div className="flex items-center ml-2 text-indigo-600 dark:text-indigo-400 font-bold">
-            <span className="mr-1">💳</span>
-            {creditCost} Credits
           </div>
         </div>
       </div>
@@ -471,7 +412,6 @@ export function PdfConverter() {
                         className="w-full py-4 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-all shadow-sm flex items-center justify-center active:scale-[0.98]"
                       >
                         Convert to PDF
-                        <span className="ml-2 bg-indigo-500 px-2 py-0.5 rounded text-xs">💳 -{creditCost}</span>
                       </button>
                     )}
                   </div>

@@ -1,10 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { useAuth } from "../context/AuthContext";
 import { Link } from "react-router-dom";
 import { ChevronLeft, Search, Download, AlertCircle, CheckCircle2, Loader2, Package, Check, X } from "lucide-react";
-import { db } from "../firebase";
-import { collection, query, where, getDocs } from "firebase/firestore";
-import { executeTool } from "../lib/toolService";
 import JSZip from "jszip";
 
 interface ImageData {
@@ -20,7 +16,6 @@ interface StickerPack {
 }
 
 export function WASGenerator() {
-  const { user, updateUser } = useAuth();
   const [keyword, setKeyword] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [images, setImages] = useState<ImageData[]>([]);
@@ -35,9 +30,6 @@ export function WASGenerator() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress, setProgress] = useState(0);
   const [generatedPacks, setGeneratedPacks] = useState<StickerPack[]>([]);
-  
-  const [toolId, setToolId] = useState<number | null>(null);
-  const [creditCost, setCreditCost] = useState<number>(1500);
 
   useEffect(() => {
     const maxAllowed = Math.max(1, Math.ceil(processedImages.length / 30));
@@ -45,35 +37,6 @@ export function WASGenerator() {
       setMaxPacks(maxAllowed);
     }
   }, [processedImages.length, maxPacks]);
-
-  useEffect(() => {
-    const fetchToolData = async () => {
-      try {
-        const toolsRef = collection(db, "tools");
-        const q = query(
-          toolsRef, 
-          where("enabled", "==", true)
-        );
-        const querySnapshot = await getDocs(q);
-        
-        const toolDoc = querySnapshot.docs.find(doc => {
-          const name = doc.data().tool_name || "";
-          return name.toLowerCase().includes("wa ~ s generator");
-        });
-          
-        if (toolDoc) {
-          setToolId(toolDoc.id as any);
-          const data = toolDoc.data();
-          if (data.credit_cost !== null && data.credit_cost !== undefined) {
-            setCreditCost(data.credit_cost);
-          }
-        }
-      } catch (err) {
-        console.error("Error fetching tool data:", err);
-      }
-    };
-    fetchToolData();
-  }, []);
 
   // Cleanup object URLs
   useEffect(() => {
@@ -441,11 +404,6 @@ export function WASGenerator() {
       return;
     }
 
-    if (user && user.credit_balance < creditCost) {
-      setError("Insufficient credits.");
-      return;
-    }
-
     setIsGenerating(true);
     setError(null);
     setProgress(0);
@@ -506,17 +464,6 @@ export function WASGenerator() {
         
         setProgress(Math.round(((i + chunk.length) / finalImages.length) * 100));
       }
-
-      const success = await executeTool(user!.id, toolId?.toString() || "wa-s-generator", creditCost);
-      
-      if (!success) {
-        throw new Error("Failed to deduct credits. Please check your balance.");
-      }
-      
-      updateUser({ 
-        credit_balance: user!.credit_balance - creditCost,
-        total_spent: (user!.total_spent || 0) + creditCost
-      });
 
       setGeneratedPacks(packs);
       setStatusMessage("Done!");
@@ -764,7 +711,6 @@ export function WASGenerator() {
                 <ul className="text-sm text-indigo-700 dark:text-indigo-400 space-y-1 list-disc list-inside">
                   <li><strong>{processedImages.length}</strong> stickers ready.</li>
                   <li>Creating <strong>{Math.min(maxPacks, Math.ceil(processedImages.length / 30))}</strong> pack(s).</li>
-                  <li>Cost: <strong>{creditCost} credits</strong>.</li>
                 </ul>
               </div>
 

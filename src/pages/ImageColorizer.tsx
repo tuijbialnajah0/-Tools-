@@ -13,10 +13,6 @@ import {
   Wand2
 } from "lucide-react";
 import { Link } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
-import { collection, query, where, getDocs, limit } from "firebase/firestore";
-import { db } from "../firebase";
-import { executeTool } from "../lib/toolService";
 
 const PRESETS = {
   vintage: { name: "Vintage Color", stops: [[0,0,0], [160,110,60], [255,240,220]] },
@@ -29,15 +25,11 @@ const PRESETS = {
 type PresetKey = keyof typeof PRESETS;
 
 export function ImageColorizer() {
-  const { user, updateUser } = useAuth();
   const [originalImage, setOriginalImage] = useState<string | null>(null);
   const [coloredImage, setColoredImage] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sliderPosition, setSliderPosition] = useState(50);
-  const [hasPaid, setHasPaid] = useState(false);
-  const [toolId, setToolId] = useState<string | null>(null);
-  const [creditCost, setCreditCost] = useState(15);
   
   // Controls
   const [preset, setPreset] = useState<PresetKey>("vintage");
@@ -49,28 +41,9 @@ export function ImageColorizer() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Auto-apply changes if originalImage exists
   useEffect(() => {
-    const fetchToolId = async () => {
-      try {
-        const toolsRef = collection(db, "tools");
-        const q = query(toolsRef, where("tool_name", "==", "Image Colorizer"), limit(1));
-        const querySnapshot = await getDocs(q);
-        
-        if (!querySnapshot.empty) {
-          const doc = querySnapshot.docs[0];
-          setToolId(doc.id);
-          setCreditCost(doc.data().credit_cost);
-        }
-      } catch (err) {
-        console.error("Error fetching tool ID:", err);
-      }
-    };
-    fetchToolId();
-  }, []);
-
-  // Auto-apply changes if user has already paid for this image session
-  useEffect(() => {
-    if (hasPaid && originalImage) {
+    if (originalImage) {
       processImageLocally();
     }
   }, [preset, strength, saturation, brightness, contrast]);
@@ -92,7 +65,6 @@ export function ImageColorizer() {
 
     setError(null);
     setColoredImage(null);
-    setHasPaid(false); // Reset payment state for new image
     
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -201,30 +173,7 @@ export function ImageColorizer() {
 
   const handleColorize = async () => {
     if (!originalImage) return;
-
-    const isAdmin = user?.role === "admin";
-    if (!isAdmin && user && user.credit_balance < creditCost && !hasPaid) {
-      setError("Insufficient credits to colorize this image.");
-      return;
-    }
-
     setError(null);
-
-    if (!hasPaid) {
-      // Deduct credits
-      if (toolId && user) {
-        await executeTool(user.id, toolId);
-      }
-
-      if (user && !isAdmin) {
-        updateUser({ 
-          credit_balance: user.credit_balance - creditCost,
-          total_spent: (user.total_spent || 0) + creditCost
-        });
-      }
-      setHasPaid(true);
-    }
-
     await processImageLocally();
   };
 
@@ -240,7 +189,6 @@ export function ImageColorizer() {
     setOriginalImage(null);
     setColoredImage(null);
     setError(null);
-    setHasPaid(false);
   };
 
   return (
@@ -260,14 +208,6 @@ export function ImageColorizer() {
               <Palette className="w-6 h-6 ml-2 text-indigo-500" />
             </h1>
             <p className="text-slate-500 dark:text-slate-400">Convert B&W to Color locally in your browser</p>
-          </div>
-        </div>
-        
-        <div className="hidden sm:flex items-center bg-indigo-50 dark:bg-indigo-900/20 px-4 py-2 rounded-lg border border-indigo-100 dark:border-indigo-800">
-          <span className="text-sm font-medium text-indigo-800 dark:text-indigo-300">Cost:</span>
-          <div className="flex items-center ml-2 text-indigo-600 dark:text-indigo-400 font-bold">
-            <span className="mr-1">💳</span>
-            {creditCost} Credits
           </div>
         </div>
       </div>
@@ -371,15 +311,8 @@ export function ImageColorizer() {
                 </div>
               </div>
 
-              {!hasPaid ? (
+              {!coloredImage ? (
                 <div className="space-y-4 pt-4 border-t border-slate-100 dark:border-slate-800">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-slate-500 dark:text-slate-400">Cost</span>
-                    <span className="font-bold text-amber-600 dark:text-amber-400 flex items-center">
-                      <span className="mr-1">💳</span>
-                      {creditCost} Credits
-                    </span>
-                  </div>
                   <button 
                     onClick={handleColorize}
                     disabled={isProcessing}
@@ -395,9 +328,6 @@ export function ImageColorizer() {
                 </div>
               ) : (
                 <div className="space-y-4 pt-4 border-t border-slate-100 dark:border-slate-800">
-                  <div className="bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 text-xs font-bold px-3 py-2 rounded-lg text-center mb-2">
-                    ✓ Unlocked. Adjustments apply instantly.
-                  </div>
                   <button 
                     onClick={handleDownload}
                     className="w-full py-4 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center"
