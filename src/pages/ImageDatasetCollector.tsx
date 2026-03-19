@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
-import { ChevronLeft, Search, Download, Image as ImageIcon, Filter, CheckCircle2, AlertCircle, ExternalLink, Loader2, Layers } from "lucide-react";
+import { ChevronLeft, Search, Download, Image as ImageIcon, Filter, AlertCircle, Loader2, Layers, Zap } from "lucide-react";
 import JSZip from "jszip";
 
 interface ImageData {
@@ -22,21 +22,25 @@ export function ImageDatasetCollector() {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
   const [selectedCount, setSelectedCount] = useState<number>(50);
+  const [selectedImageIds, setSelectedImageIds] = useState<Set<string>>(new Set());
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [statusMessage, setStatusMessage] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [isFromCache, setIsFromCache] = useState(false);
   const [showWaifuWarning, setShowWaifuWarning] = useState(false);
   
+  const [lowQualityMode, setLowQualityMode] = useState(true);
   const [filterSource, setFilterSource] = useState<string>("All");
   const [filterOrientation, setFilterOrientation] = useState<string>("All");
   const [filterQuality, setFilterQuality] = useState<string>("Any");
   const [searchCache, setSearchCache] = useState<Record<string, ImageData[]>>({});
 
   const popularSearches = [
-    "Aesthetic Wallpaper", "Minimalist Setup", "Cyberpunk Art", "Nature Photography", "Vintage Architecture",
-    "Anime Scenery", "Cozy Room", "Street Photography", "Dark Academia", "Neon City",
-    "Concept Art", "Character Design", "Pixel Art", "Watercolor Illustration", "Tattoo Design"
+    "Rem Re:Zero", "Emilia Re:Zero", "Mikasa Ackerman", "Hinata Hyuga", "Zero Two",
+    "Asuna Yuuki", "Saber Fate", "Megumin", "Raphtalia", "Marin Kitagawa",
+    "Yor Forger", "Power Chainsaw Man", "Makima", "Frieren", "Fern Frieren",
+    "Nobara Kugisaki", "Nezuko Kamado", "Kaguya Shinomiya"
   ];
 
   const fetchImageBlob = async (url: string): Promise<Blob | null> => {
@@ -87,6 +91,7 @@ export function ImageDatasetCollector() {
     if (!isLoadMore) {
       setImages([]);
       setPage(1);
+      setIsFromCache(false);
     }
     
     const currentPage = isLoadMore ? page + 1 : 1;
@@ -95,9 +100,8 @@ export function ImageDatasetCollector() {
     try {
       setSearchProgress(20);
 
-      // Broaden keyword to include pinterest style for aesthetic results
-      const enhancedKeyword = `${fullKeyword} pinterest aesthetic`;
-      const searchRes = await fetch(`/api/search-images?q=${encodeURIComponent(enhancedKeyword)}&page=${currentPage}`);
+      // Use raw keyword, server handles variety now
+      const searchRes = await fetch(`/api/search-images?q=${encodeURIComponent(fullKeyword)}&page=${currentPage}`);
       
       if (!searchRes.ok) {
         const errorData = await searchRes.json().catch(() => ({}));
@@ -106,6 +110,7 @@ export function ImageDatasetCollector() {
 
       const data = await searchRes.json();
       const results = data.results || [];
+      setIsFromCache(!!data.cached);
 
       setSearchProgress(90);
 
@@ -123,6 +128,11 @@ export function ImageDatasetCollector() {
       );
       
       setImages(uniqueImages);
+      
+      // Auto-select first N images based on selectedCount
+      const initialSelected = new Set(uniqueImages.slice(0, selectedCount).map(img => img.id));
+      setSelectedImageIds(initialSelected);
+
       if (!isLoadMore) {
         setSearchCache(prev => ({ ...prev, [fullKeyword]: uniqueImages }));
       }
@@ -164,30 +174,25 @@ export function ImageDatasetCollector() {
     return true;
   });
 
-  const downloadSingleImage = async (img: ImageData) => {
-    try {
-      setStatusMessage(`Downloading ${img.title.substring(0, 20)}...`);
-      const blob = await fetchImageBlob(img.url);
-      if (!blob) throw new Error("Could not download image");
-      
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      const ext = img.url.split('.').pop()?.split('?')[0] || 'jpg';
-      const safeExt = ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext.toLowerCase()) ? ext : 'jpg';
-      a.download = `${img.title.replace(/[^a-z0-9]/gi, '_').substring(0, 30)}_${img.id}.${safeExt}`;
-      a.click();
-      URL.revokeObjectURL(url);
-      setStatusMessage("");
-    } catch (err) {
-      console.error("Failed to download image:", err);
-      setError("Failed to download image. It might be protected.");
-      setTimeout(() => setError(null), 3000);
-    }
+  const toggleImageSelection = (id: string) => {
+    setSelectedImageIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAll = () => {
+    setSelectedImageIds(new Set(filteredImages.map(img => img.id)));
+  };
+
+  const deselectAll = () => {
+    setSelectedImageIds(new Set());
   };
 
   const generateDataset = async () => {
-    const resultsToDownload = filteredImages.slice(0, selectedCount);
+    const resultsToDownload = filteredImages.filter(img => selectedImageIds.has(img.id));
     if (resultsToDownload.length === 0) return;
 
     setIsDownloading(true);
@@ -250,13 +255,6 @@ export function ImageDatasetCollector() {
 
   const sources = ["All", ...Array.from(new Set(images.map(i => i.source)))];
 
-  const getOptimizedThumbnail = (url: string) => {
-    if (!url) return '';
-    // Use weserv.nl for fast, resized, webp previews (low quality for speed)
-    // We use a relatively small width (400px) and let height adjust automatically to preserve aspect ratio
-    return `https://wsrv.nl/?url=${encodeURIComponent(url)}&w=400&output=webp&q=50`;
-  };
-
   return (
     <div className="max-w-7xl mx-auto">
       <div className="mb-8 flex flex-col items-center justify-center text-center pt-8 pb-4">
@@ -271,7 +269,7 @@ export function ImageDatasetCollector() {
           </h1>
         </div>
         <p className="text-slate-500 dark:text-slate-400 max-w-2xl text-lg">
-          Search and download high-quality, Pinterest-style aesthetic image datasets from multiple public sources.
+          Search and download high-quality, Pinterest-style anime aesthetic image datasets from multiple public sources.
         </p>
       </div>
 
@@ -296,7 +294,7 @@ export function ImageDatasetCollector() {
 
         <div className="mt-8 text-center">
           <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mb-4">
-            Popular Searches
+            Popular Waifus
           </p>
           <div className="flex flex-wrap justify-center gap-2 max-w-3xl mx-auto">
             {popularSearches.map((char) => (
@@ -389,6 +387,28 @@ export function ImageDatasetCollector() {
                     <option value="Square">Square</option>
                   </select>
                 </div>
+
+                <div className="pt-2">
+                  <label className="flex items-center cursor-pointer group">
+                    <div className="relative">
+                      <input 
+                        type="checkbox" 
+                        className="sr-only" 
+                        checked={lowQualityMode}
+                        onChange={() => setLowQualityMode(!lowQualityMode)}
+                      />
+                      <div className={`block w-10 h-6 rounded-full transition-colors ${lowQualityMode ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-700'}`}></div>
+                      <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${lowQualityMode ? 'transform translate-x-4' : ''}`}></div>
+                    </div>
+                    <div className="ml-3 text-slate-700 dark:text-slate-300 text-sm font-bold flex items-center">
+                      <Zap className={`w-4 h-4 mr-1 ${lowQualityMode ? 'text-amber-500' : 'text-slate-400'}`} />
+                      Fast Preview
+                    </div>
+                  </label>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 ml-10">
+                    Loads lightning-fast low-res thumbnails to save data and time.
+                  </p>
+                </div>
               </div>
             </div>
 
@@ -400,22 +420,40 @@ export function ImageDatasetCollector() {
               
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Dataset Size</label>
+                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Quick Select</label>
                   <select 
                     value={selectedCount}
-                    onChange={(e) => setSelectedCount(Number(e.target.value))}
+                    onChange={(e) => {
+                      const count = Number(e.target.value);
+                      setSelectedCount(count);
+                      setSelectedImageIds(new Set(filteredImages.slice(0, count).map(img => img.id)));
+                    }}
                     className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none dark:text-white text-sm"
                   >
-                    <option value={50}>50 Images</option>
-                    <option value={100}>100 Images</option>
-                    <option value={250}>250 Images</option>
-                    <option value={500}>500 Images</option>
-                    <option value={1000}>1000 Images</option>
+                    <option value={50}>First 50 Images</option>
+                    <option value={100}>First 100 Images</option>
+                    <option value={250}>First 250 Images</option>
+                    <option value={500}>First 500 Images</option>
                   </select>
                 </div>
 
+                <div className="flex gap-2">
+                  <button 
+                    onClick={selectAll}
+                    className="flex-1 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                  >
+                    Select All
+                  </button>
+                  <button 
+                    onClick={deselectAll}
+                    className="flex-1 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                  >
+                    Clear
+                  </button>
+                </div>
+
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Available after filters: <strong className="text-indigo-600 dark:text-indigo-400">{filteredImages.length}</strong> images
+                  Selected: <strong className="text-indigo-600 dark:text-indigo-400">{selectedImageIds.size}</strong> / {filteredImages.length} images
                 </p>
 
                 <button
@@ -442,94 +480,118 @@ export function ImageDatasetCollector() {
             </div>
           </div>
 
-          {/* Gallery */}
+          {/* Image Grid */}
           <div className="lg:col-span-3">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-slate-900 dark:text-white">Results ({filteredImages.length})</h2>
+              <div className="flex items-center gap-3">
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+                  Search Results ({filteredImages.length})
+                </h2>
+                {isFromCache && (
+                  <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold uppercase tracking-wider rounded-full border border-emerald-200">
+                    Cached
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={generateDataset}
+                  disabled={isDownloading || selectedImageIds.size === 0}
+                  className="px-4 py-2 bg-indigo-600 text-white text-sm font-bold rounded-xl hover:bg-indigo-700 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                >
+                  {isDownloading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                      {downloadProgress}%
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4 mr-2" />
+                      Download ZIP ({selectedImageIds.size})
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
             
-            <div className="columns-2 md:columns-3 xl:columns-4 gap-4 space-y-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
               {filteredImages.map((img) => (
-                <div key={img.id} className="group relative break-inside-avoid bg-slate-100 dark:bg-slate-800 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-xl transition-all duration-300">
+                <div 
+                  key={img.id}
+                  onClick={() => toggleImageSelection(img.id)}
+                  className={`group relative aspect-square rounded-2xl overflow-hidden border-2 transition-all cursor-pointer ${
+                    selectedImageIds.has(img.id) 
+                      ? 'border-indigo-500 ring-4 ring-indigo-500/20' 
+                      : 'border-transparent hover:border-slate-300 dark:hover:border-slate-700'
+                  }`}
+                >
                   <img 
-                    src={getOptimizedThumbnail(img.thumbnail)} 
+                    src={lowQualityMode ? `https://wsrv.nl/?url=${encodeURIComponent(img.thumbnail)}&w=200&h=200&fit=cover&output=webp&q=30` : img.thumbnail} 
                     alt={img.title}
-                    loading="lazy"
                     referrerPolicy="no-referrer"
-                    className="w-full h-auto block transition-transform duration-500 group-hover:scale-105"
-                    onError={(e) => {
-                      const target = e.target as HTMLImageElement;
-                      if (!target.dataset.triedThumb) {
-                        target.dataset.triedThumb = 'true';
-                        target.src = img.thumbnail; // Fallback to original thumbnail if optimized fails
-                      } else if (!target.dataset.triedUrl) {
-                        target.dataset.triedUrl = 'true';
-                        target.src = img.url; // Fallback to full image if thumbnail fails
-                      } else if (!target.dataset.triedProxy) {
-                        target.dataset.triedProxy = 'true';
-                        target.src = `https://corsproxy.io/?${encodeURIComponent(img.url)}`;
-                      } else {
-                        target.src = 'https://via.placeholder.com/400?text=Image+Not+Found';
-                      }
-                    }}
+                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                    loading="lazy"
                   />
                   
-                  <div className="absolute inset-0 bg-gradient-to-t from-slate-900/90 via-slate-900/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[10px] font-bold px-2 py-1 bg-indigo-600 text-white rounded-md uppercase tracking-wider">
-                        {img.source}
+                  <div className={`absolute inset-0 bg-indigo-600/10 transition-opacity ${selectedImageIds.has(img.id) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`} />
+                  
+                  {/* Source Tag */}
+                  <div className="absolute bottom-2 left-2 flex gap-1">
+                    <span className="px-1.5 py-0.5 bg-black/60 text-white text-[8px] font-bold rounded backdrop-blur-sm">
+                      {img.source}
+                    </span>
+                    {(img as any).type && (
+                      <span className={`px-1.5 py-0.5 text-white text-[8px] font-bold rounded backdrop-blur-sm ${
+                        (img as any).type === 'Cosplay' ? 'bg-pink-600/80' : 
+                        (img as any).type === 'Anime/Art' ? 'bg-indigo-600/80' : 'bg-slate-600/80'
+                      }`}>
+                        {(img as any).type}
                       </span>
-                      {img.width && img.height && (
-                        <span className="text-[10px] font-medium text-slate-300">
-                          {img.width}x{img.height}
-                        </span>
-                      )}
+                    )}
+                  </div>
+
+                  <div className="absolute top-2 right-2">
+                    <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${
+                      selectedImageIds.has(img.id)
+                        ? 'bg-indigo-600 border-indigo-600 text-white'
+                        : 'bg-white/80 border-slate-300 text-transparent'
+                    }`}>
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                      </svg>
                     </div>
-                    <p className="text-xs text-white font-medium line-clamp-2 mb-3" title={img.title}>
-                      {img.title || "Untitled"}
-                    </p>
-                    <div className="flex gap-2">
-                      <button 
-                        onClick={() => downloadSingleImage(img)}
-                        className="flex-1 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-full transition-colors flex items-center justify-center shadow-lg"
-                      >
-                        <Download className="w-4 h-4 mr-1.5" /> Save
-                      </button>
-                      <a 
-                        href={img.sourceUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="w-10 h-10 bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white rounded-full transition-colors flex items-center justify-center"
-                        title="Open Source"
-                      >
-                        <ExternalLink className="w-4 h-4" />
-                      </a>
-                    </div>
+                  </div>
+
+                  <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+                    <p className="text-[10px] text-white truncate font-medium">{img.source}</p>
+                    {img.width && img.height && (
+                      <p className="text-[10px] text-white/80">{img.width}x{img.height}</p>
+                    )}
                   </div>
                 </div>
               ))}
             </div>
-            
+
             {hasMore && filteredImages.length > 0 && (
               <div className="mt-8 flex justify-center">
                 <button
                   onClick={() => handleSearch(undefined, true)}
                   disabled={isSearching}
-                  className="px-8 py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-bold rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-700 transition-all flex items-center shadow-sm"
+                  className="px-8 py-3 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition-all flex items-center shadow-sm"
                 >
                   {isSearching ? (
                     <>
                       <Loader2 className="w-5 h-5 animate-spin mr-2" />
-                      Loading...
+                      Loading more...
                     </>
                   ) : (
-                    "Load More Results"
+                    "Load More Images"
                   )}
                 </button>
               </div>
             )}
             
-            {filteredImages.length === 0 && (
+            {filteredImages.length === 0 && !isSearching && (
               <div className="text-center py-20 bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800">
                 <ImageIcon className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-4" />
                 <p className="text-slate-500 dark:text-slate-400 font-medium">No images match your filters.</p>

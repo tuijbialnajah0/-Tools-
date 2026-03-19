@@ -71,6 +71,36 @@
   --theme-primary: #065f46; 
   --theme-primary-hover: #064e3b; 
 }
+.theme-cinematic-nature {
+  --theme-primary: #0d9488;
+  --theme-primary-hover: #0f766e;
+}
+
+/* Make layout transparent for full-screen canvas themes */
+html.theme-green-leaf body,
+html.theme-cinematic-nature body,
+html.theme-green-leaf #app-layout,
+html.theme-cinematic-nature #app-layout,
+html.theme-green-leaf main,
+html.theme-cinematic-nature main {
+  background-color: transparent !important;
+}
+
+html.theme-green-leaf aside,
+html.theme-cinematic-nature aside,
+html.theme-green-leaf header,
+html.theme-cinematic-nature header {
+  background-color: rgba(255, 255, 255, 0.6) !important;
+  backdrop-filter: blur(12px);
+}
+
+html.dark.theme-green-leaf aside,
+html.dark.theme-cinematic-nature aside,
+html.dark.theme-green-leaf header,
+html.dark.theme-cinematic-nature header {
+  background-color: rgba(15, 23, 42, 0.6) !important;
+  backdrop-filter: blur(12px);
+}
 
 
 

@@ -91,6 +91,25 @@ export function Themes() {
             Calm and premium falling green leaf petals.
           </p>
         </div>
+
+        {/* Cinematic Nature Theme */}
+        <div 
+          onClick={() => handleThemeSelect('cinematic-nature')}
+          className={cn(
+            "cursor-pointer rounded-2xl border-2 p-6 transition-all hover:shadow-md",
+            activeTheme === 'cinematic-nature' 
+              ? "border-teal-500 bg-teal-50 dark:bg-teal-900/20" 
+              : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-teal-300"
+          )}
+        >
+          <div className="flex justify-between items-start mb-4">
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white">Cinematic Nature</h3>
+            {activeTheme === 'cinematic-nature' && <CheckCircle2 className="w-6 h-6 text-teal-500" />}
+          </div>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            Highly immersive, cinematic, nature-based animated environment with water ripples and fireflies.
+          </p>
+        </div>
       </div>
     </div>
   );

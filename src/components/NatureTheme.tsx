@@ -13,7 +13,7 @@ export function NatureTheme() {
     let height = canvas.height = window.innerHeight;
 
     const leaves: any[] = [];
-    const leafCount = 100;
+    const leafCount = 50;
 
     for (let i = 0; i < leafCount; i++) {
       leaves.push({
@@ -39,9 +39,11 @@ export function NatureTheme() {
       ctx.restore();
     }
 
+    let animationFrameId: number;
+
     function animate() {
-      ctx.fillStyle = '#064e3b'; // Dark forest green background
-      ctx.fillRect(0, 0, width, height);
+      ctx!.fillStyle = '#064e3b'; // Dark forest green background
+      ctx!.fillRect(0, 0, width, height);
 
       leaves.forEach(leaf => {
         leaf.y += leaf.speed;
@@ -55,7 +57,7 @@ export function NatureTheme() {
         drawLeaf(leaf);
       });
 
-      requestAnimationFrame(animate);
+      animationFrameId = requestAnimationFrame(animate);
     }
 
     animate();
@@ -65,13 +67,16 @@ export function NatureTheme() {
       height = canvas.height = window.innerHeight;
     };
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      cancelAnimationFrame(animationFrameId);
+    };
   }, []);
 
   return (
     <canvas 
       ref={canvasRef} 
-      className="fixed inset-0 -z-10"
+      className="fixed inset-0 z-0 pointer-events-none"
     />
   );
 }

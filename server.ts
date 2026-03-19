@@ -13,6 +13,10 @@ async function startServer() {
     res.json({ status: "ok" });
   });
 
+  // Simple in-memory cache for search results
+  const searchCache = new Map<string, { results: any[], timestamp: number }>();
+  const CACHE_TTL = 1000 * 60 * 15; // 15 minutes
+
   app.get("/api/search-images", async (req, res) => {
     const keyword = req.query.q as string;
     const page = parseInt(req.query.page as string) || 1;
@@ -21,92 +25,168 @@ async function startServer() {
       return res.status(400).json({ error: "Keyword is required" });
     }
 
-    try {
-      // Primary: Qwant API (Very Fast)
-      const offset = (page - 1) * 50;
-      const qwantUrl = `https://api.qwant.com/v3/search/images?count=50&q=${encodeURIComponent(keyword)}&t=images&safesearch=1&locale=en_US&offset=${offset}&device=desktop`;
-      
-      const qwantRes = await fetch(qwantUrl, {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    // Check cache
+    const cacheKey = `${keyword}-${page}`;
+    const cached = searchCache.get(cacheKey);
+    if (cached && (Date.now() - cached.timestamp < CACHE_TTL)) {
+      return res.json({ results: cached.results, cached: true });
+    }
+
+    const allResults: any[] = [];
+
+    // Clean keyword for specific sources (Safebooru/Wikimedia)
+    const cleanKeyword = keyword
+      .replace(/aesthetic/gi, '')
+      .replace(/pinterest/gi, '')
+      .replace(/anime/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    const searchSources = async () => {
+      // Create multiple search variations to ensure variety (Anime, Cosplay, Fanart)
+      const variations = [
+        keyword, // Original
+        `${keyword} anime art`,
+        `${keyword} cosplay`,
+        `${keyword} fanart high quality`
+      ];
+
+      const tasks = [
+        // 1. DuckDuckGo (Primary - with variations for variety)
+        ...variations.map((query, vIdx) => (async () => {
+          try {
+            const ddgUrl = `https://duckduckgo.com/?q=${encodeURIComponent(query)}`;
+            const proxies = [
+              `https://api.allorigins.win/get?url=${encodeURIComponent(ddgUrl)}`,
+              `https://api.codetabs.com/v1/proxy?url=${encodeURIComponent(ddgUrl)}`,
+              `https://thingproxy.freeboard.io/fetch/${encodeURIComponent(ddgUrl)}`
+            ];
+            
+            const vqd = await Promise.any(proxies.map(async (proxy) => {
+              try {
+                const vqdRes = await fetch(proxy, { signal: AbortSignal.timeout(4000) });
+                if (vqdRes.ok) {
+                  const vqdData = await vqdRes.json();
+                  const contents = vqdData.contents || vqdData; 
+                  const html = typeof contents === 'string' ? contents : JSON.stringify(contents);
+                  const match = html.match(/vqd="([^"]+)"/) || html.match(/vqd=([a-zA-Z0-9-]+)/);
+                  if (match) return match[1];
+                }
+              } catch (e) { /* ignore */ }
+              throw new Error("VQD not found");
+            })).catch(() => null);
+
+            if (vqd) {
+              const offset = (page - 1) * 30; // Smaller offset per variation
+              const searchUrl = `https://duckduckgo.com/i.js?l=us-en&o=json&q=${encodeURIComponent(query)}&vqd=${vqd}&f=,,,,,&p=1&s=${offset}`;
+              const searchProxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(searchUrl)}`;
+              
+              const searchRes = await fetch(searchProxyUrl, { signal: AbortSignal.timeout(6000) });
+              if (searchRes.ok) {
+                const searchData = await searchRes.json();
+                const parsedData = JSON.parse(searchData.contents);
+                if (parsedData && parsedData.results) {
+                  return parsedData.results.map((r: any, idx: number) => ({
+                    id: `ddg-${page}-${vIdx}-${idx}-${Math.random().toString(36).substr(2, 9)}`,
+                    url: r.image,
+                    thumbnail: r.thumbnail,
+                    source: "DuckDuckGo",
+                    sourceUrl: r.url,
+                    title: r.title || query,
+                    width: r.width,
+                    height: r.height,
+                    type: query.includes('cosplay') ? 'Cosplay' : (query.includes('anime') || query.includes('fanart') ? 'Anime/Art' : 'General')
+                  }));
+                }
+              }
+            }
+          } catch (e) {
+            console.error(`DDG search failed for "${query}":`, e);
+          }
+          return [];
+        })()),
+
+        // 2. Safebooru (Strictly Anime/Manga)
+        (async () => {
+          try {
+            const safeTags = cleanKeyword.replace(/\s+/g, '_').toLowerCase();
+            const safeUrl = `https://safebooru.org/index.php?page=dapi&s=post&q=index&tags=${encodeURIComponent(safeTags)}&json=1&limit=50&pid=${page - 1}`;
+            const safeRes = await fetch(safeUrl, { signal: AbortSignal.timeout(6000) });
+            if (safeRes.ok) {
+              const safeData = await safeRes.json();
+              if (Array.isArray(safeData)) {
+                return safeData.map((p: any, idx: number) => ({
+                  id: `safe-${page}-${idx}-${p.id}`,
+                  url: `https://safebooru.org/images/${p.directory}/${p.image}`,
+                  thumbnail: `https://safebooru.org/thumbnails/${p.directory}/thumbnail_${p.image}`,
+                  source: "Safebooru",
+                  sourceUrl: `https://safebooru.org/index.php?page=post&s=view&id=${p.id}`,
+                  title: p.tags || keyword,
+                  width: p.width,
+                  height: p.height
+                }));
+              }
+            }
+          } catch (e) {
+            console.error("Safebooru search failed:", e);
+          }
+          return [];
+        })(),
+
+        // 3. Wikimedia (Fallback/Reliable)
+        (async () => {
+          try {
+            const offset = (page - 1) * 50;
+            const wikiUrl = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(cleanKeyword)}&gsrnamespace=6&gsrlimit=50&gsroffset=${offset}&prop=imageinfo&iiprop=url|size|extmetadata&format=json&origin=*`;
+            
+            const wikiRes = await fetch(wikiUrl, { signal: AbortSignal.timeout(6000) });
+            if (wikiRes.ok) {
+              const wikiData = await wikiRes.json();
+              if (wikiData && wikiData.query && wikiData.query.pages) {
+                const pages = Object.values(wikiData.query.pages) as any[];
+                return pages
+                  .filter(p => p.imageinfo && p.imageinfo[0])
+                  .map((p: any, idx: number) => {
+                    const info = p.imageinfo[0];
+                    return {
+                      id: `wiki-${page}-${idx}-${p.pageid}`,
+                      url: info.url,
+                      thumbnail: info.thumburl || info.url,
+                      source: "Wikimedia",
+                      sourceUrl: info.descriptionurl,
+                      title: p.title.replace('File:', '').replace(/\.[^/.]+$/, "") || keyword,
+                      width: info.width,
+                      height: info.height
+                    };
+                  });
+              }
+            }
+          } catch (e) {
+            console.error("Wikimedia search failed:", e);
+          }
+          return [];
+        })()
+      ];
+
+      const results = await Promise.allSettled(tasks);
+      results.forEach(res => {
+        if (res.status === 'fulfilled') {
+          allResults.push(...res.value);
         }
       });
+    };
 
-      if (!qwantRes.ok) {
-        throw new Error("Qwant primary search failed.");
-      }
+    await searchSources();
 
-      const qwantData = await qwantRes.json();
+    // Deduplicate by URL
+    const uniqueResults = Array.from(
+      new Map(allResults.map(item => [item.url, item])).values()
+    );
 
-      if (!qwantData || !qwantData.data || !qwantData.data.result || !qwantData.data.result.items) {
-        // No results found, return empty array instead of throwing
-        return res.json({ results: [] });
-      }
+    // Save to cache
+    searchCache.set(cacheKey, { results: uniqueResults, timestamp: Date.now() });
 
-      const results = qwantData.data.result.items.map((r: any, idx: number) => ({
-        id: `qwant-${page}-${idx}-${Math.random().toString(36).substr(2, 9)}`,
-        url: r.media,
-        thumbnail: r.thumbnail,
-        source: new URL(r.url || r.media).hostname.replace('www.', '') || "Web",
-        sourceUrl: r.url,
-        title: r.title || keyword,
-        width: r.width,
-        height: r.height
-      }));
-
-      return res.json({ results });
-
-    } catch (error: any) {
-      console.error("Qwant search failed, falling back to Wikimedia:", error);
-      
-      // Fallback: Wikimedia Commons API (Fast & Reliable, but limited inventory)
-      try {
-        const offset = (page - 1) * 50;
-        // Simplify keyword for Wikimedia since it doesn't handle complex negative filters well
-        const simpleKeyword = keyword.split(' -')[0].trim();
-        const wikiUrl = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(simpleKeyword)}&gsrnamespace=6&gsrlimit=50&gsroffset=${offset}&prop=imageinfo&iiprop=url|size|extmetadata&format=json&origin=*`;
-        
-        const wikiRes = await fetch(wikiUrl, {
-          headers: {
-            "User-Agent": "ImageDatasetCollector/1.0 (https://example.com/)"
-          }
-        });
-
-        if (!wikiRes.ok) {
-          throw new Error("Wikimedia fallback failed.");
-        }
-
-        const wikiData = await wikiRes.json();
-
-        if (!wikiData || !wikiData.query || !wikiData.query.pages) {
-          // No results found, return empty array instead of throwing
-          return res.json({ results: [] });
-        }
-
-        const pages = Object.values(wikiData.query.pages) as any[];
-        const results = pages
-          .filter(p => p.imageinfo && p.imageinfo[0])
-          .map((p: any, idx: number) => {
-            const info = p.imageinfo[0];
-            return {
-              id: `wiki-${page}-${idx}-${Math.random().toString(36).substr(2, 9)}`,
-              url: info.url,
-              thumbnail: info.thumburl || info.url,
-              source: "Wikimedia Commons",
-              sourceUrl: info.descriptionurl,
-              title: p.title.replace('File:', '').replace(/\.[^/.]+$/, "") || keyword,
-              width: info.width,
-              height: info.height
-            };
-          });
-
-        return res.json({ results });
-
-      } catch (fallbackError: any) {
-        console.error("Wikimedia fallback also failed:", fallbackError);
-        return res.status(500).json({ error: "Both primary and fallback search engines failed to respond." });
-      }
-    }
+    return res.json({ results: uniqueResults });
   });
 
   // Proxy image to bypass CORS when downloading

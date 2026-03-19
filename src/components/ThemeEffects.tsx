@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { NatureTheme } from './NatureTheme';
+import { CinematicNatureTheme } from './CinematicNatureTheme';
 
 export function ThemeEffects() {
   const [theme, setTheme] = useState<string | null>(localStorage.getItem('app-theme'));
@@ -7,17 +8,21 @@ export function ThemeEffects() {
   useEffect(() => {
     const applyThemeClass = (currentTheme: string | null) => {
       // Remove any existing theme classes
+      const classesToRemove: string[] = [];
       document.documentElement.classList.forEach(cls => {
         if (cls.startsWith('theme-')) {
-          document.documentElement.classList.remove(cls);
+          classesToRemove.push(cls);
         }
       });
+      classesToRemove.forEach(cls => document.documentElement.classList.remove(cls));
       
       // Add the new theme class if it exists
       if (currentTheme === 'pink-petals') {
         document.documentElement.classList.add('theme-petals');
       } else if (currentTheme === 'green-leaf-petals') {
         document.documentElement.classList.add('theme-green-leaf');
+      } else if (currentTheme === 'cinematic-nature') {
+        document.documentElement.classList.add('theme-cinematic-nature');
       }
     };
 
@@ -83,10 +88,14 @@ export function ThemeEffects() {
     return <NatureTheme />;
   }
 
+  if (theme === 'cinematic-nature') {
+    return <CinematicNatureTheme />;
+  }
+
   if (theme !== 'pink-petals') return null;
 
   return (
-    <div className="fixed inset-0 pointer-events-none overflow-hidden" style={{ zIndex: 0 }}>
+    <div className="fixed inset-0 pointer-events-none overflow-hidden" style={{ zIndex: 50 }}>
       {petals}
     </div>
   );

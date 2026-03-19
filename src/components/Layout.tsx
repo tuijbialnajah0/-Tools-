@@ -87,7 +87,7 @@ export function Layout() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col md:flex-row transition-colors duration-300 relative">
+    <div id="app-layout" className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col md:flex-row transition-colors duration-300 relative">
       <ThemeEffects />
       {/* Mobile Header */}
       <header className="md:hidden h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-4 sticky top-0 z-50">
@@ -227,7 +227,7 @@ export function Layout() {
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 flex flex-col min-w-0 overflow-hidden bg-slate-50 dark:bg-slate-950">
+      <main className="flex-1 flex flex-col min-w-0 overflow-hidden bg-slate-50 dark:bg-slate-950 relative z-10">
         <div className="flex-1 overflow-y-auto p-4 md:p-8 relative">
           <Outlet />
           <ToolManager />
