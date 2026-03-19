@@ -43,6 +43,18 @@ async function startServer() {
       .trim();
 
     const searchSources = async () => {
+      // Helper to safely parse JSON from proxy responses
+      const safeParse = (data: any) => {
+        if (!data) return null;
+        try {
+          if (typeof data === 'string') return JSON.parse(data);
+          if (data.contents && typeof data.contents === 'string') return JSON.parse(data.contents);
+          return data.contents || data;
+        } catch (e) {
+          return null;
+        }
+      };
+
       // Create multiple search variations to ensure variety (Anime, Cosplay, Fanart)
       const variations = [
         keyword, // Original
@@ -66,7 +78,9 @@ async function startServer() {
               try {
                 const vqdRes = await fetch(proxy, { signal: AbortSignal.timeout(4000) });
                 if (vqdRes.ok) {
-                  const vqdData = await vqdRes.json();
+                  const vqdData = await vqdRes.json().catch(() => null);
+                  if (!vqdData) throw new Error("Invalid JSON from proxy");
+                  
                   const contents = vqdData.contents || vqdData; 
                   const html = typeof contents === 'string' ? contents : JSON.stringify(contents);
                   const match = html.match(/vqd="([^"]+)"/) || html.match(/vqd=([a-zA-Z0-9-]+)/);
@@ -83,8 +97,9 @@ async function startServer() {
               
               const searchRes = await fetch(searchProxyUrl, { signal: AbortSignal.timeout(6000) });
               if (searchRes.ok) {
-                const searchData = await searchRes.json();
-                const parsedData = JSON.parse(searchData.contents);
+                const searchData = await searchRes.json().catch(() => null);
+                const parsedData = safeParse(searchData);
+                
                 if (parsedData && parsedData.results) {
                   return parsedData.results.map((r: any, idx: number) => ({
                     id: `ddg-${page}-${vIdx}-${idx}-${Math.random().toString(36).substr(2, 9)}`,
@@ -101,7 +116,7 @@ async function startServer() {
               }
             }
           } catch (e) {
-            console.error(`DDG search failed for "${query}":`, e);
+            // Silent fail for individual variations to avoid cluttering logs
           }
           return [];
         })()),
@@ -113,18 +128,27 @@ async function startServer() {
             const safeUrl = `https://safebooru.org/index.php?page=dapi&s=post&q=index&tags=${encodeURIComponent(safeTags)}&json=1&limit=50&pid=${page - 1}`;
             const safeRes = await fetch(safeUrl, { signal: AbortSignal.timeout(6000) });
             if (safeRes.ok) {
-              const safeData = await safeRes.json();
-              if (Array.isArray(safeData)) {
-                return safeData.map((p: any, idx: number) => ({
-                  id: `safe-${page}-${idx}-${p.id}`,
-                  url: `https://safebooru.org/images/${p.directory}/${p.image}`,
-                  thumbnail: `https://safebooru.org/thumbnails/${p.directory}/thumbnail_${p.image}`,
-                  source: "Safebooru",
-                  sourceUrl: `https://safebooru.org/index.php?page=post&s=view&id=${p.id}`,
-                  title: p.tags || keyword,
-                  width: p.width,
-                  height: p.height
-                }));
+              const text = await safeRes.text();
+              if (!text || text.trim() === "") return [];
+              
+              try {
+                const safeData = JSON.parse(text);
+                if (Array.isArray(safeData)) {
+                  return safeData.map((p: any, idx: number) => ({
+                    id: `safe-${page}-${idx}-${p.id}`,
+                    url: `https://safebooru.org/images/${p.directory}/${p.image}`,
+                    thumbnail: `https://safebooru.org/thumbnails/${p.directory}/thumbnail_${p.image}`,
+                    source: "Safebooru",
+                    sourceUrl: `https://safebooru.org/index.php?page=post&s=view&id=${p.id}`,
+                    title: p.tags || keyword,
+                    width: p.width,
+                    height: p.height,
+                    type: 'Anime/Art'
+                  }));
+                }
+              } catch (e) {
+                // Safebooru sometimes returns XML even when JSON is requested if there's an error
+                return [];
               }
             }
           } catch (e) {
@@ -238,7 +262,7 @@ async function startServer() {
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`Server v1.0.2 running on http://localhost:${PORT}`);
   });
 }
 

@@ -265,11 +265,11 @@ export function ImageDatasetCollector() {
         <div className="flex items-center justify-center mb-4">
           <Layers className="w-12 h-12 mr-4 text-indigo-600" />
           <h1 className="text-4xl font-bold text-slate-900 dark:text-white">
-            Image Dataset Collector
+            Image Dataset Collector <span className="text-sm font-normal text-slate-400 align-middle ml-2">v1.0.2</span>
           </h1>
         </div>
         <p className="text-slate-500 dark:text-slate-400 max-w-2xl text-lg">
-          Search and download high-quality, Pinterest-style anime aesthetic image datasets from multiple public sources.
+          Search and download high-quality datasets. Now featuring <b>Anime, Cosplay, and Fanart</b> variety.
         </p>
       </div>
 
