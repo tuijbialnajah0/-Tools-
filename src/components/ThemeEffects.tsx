@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { NatureTheme } from './NatureTheme';
 import { CinematicNatureTheme } from './CinematicNatureTheme';
+import { EidTheme } from './EidTheme';
 
 export function ThemeEffects() {
   const [theme, setTheme] = useState<string | null>(localStorage.getItem('app-theme'));
@@ -19,10 +19,10 @@ export function ThemeEffects() {
       // Add the new theme class if it exists
       if (currentTheme === 'pink-petals') {
         document.documentElement.classList.add('theme-petals');
-      } else if (currentTheme === 'green-leaf-petals') {
-        document.documentElement.classList.add('theme-green-leaf');
       } else if (currentTheme === 'cinematic-nature') {
         document.documentElement.classList.add('theme-cinematic-nature');
+      } else if (currentTheme === 'eid-ul-fitr') {
+        document.documentElement.classList.add('theme-eid');
       }
     };
 
@@ -84,12 +84,12 @@ export function ThemeEffects() {
     });
   }, [theme]);
 
-  if (theme === 'green-leaf-petals') {
-    return <NatureTheme />;
-  }
-
   if (theme === 'cinematic-nature') {
     return <CinematicNatureTheme />;
+  }
+
+  if (theme === 'eid-ul-fitr') {
+    return <EidTheme />;
   }
 
   if (theme !== 'pink-petals') return null;

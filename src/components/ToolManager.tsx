@@ -4,31 +4,25 @@ import { useTools } from '../context/ToolContext';
 
 // Import all tools
 import { BackgroundRemover } from "../pages/BackgroundRemover";
-import { ImageUpscaler } from "../pages/ImageUpscaler";
-import { ImageColorizer } from "../pages/ImageColorizer";
 import { QrGenerator } from "../pages/QrGenerator";
 import { SmartCodeGenerator } from "../pages/SmartCodeGenerator";
-import { CodeBase } from "../pages/CodeBase";
 import { PdfConverter } from "../pages/PdfConverter";
 import { WhatsappSCreate } from "../pages/WhatsappSCreate";
-import { WhatsappSCreateVideo } from "../pages/WhatsappSCreateVideo";
 import { ImageDatasetCollector } from "../pages/ImageDatasetCollector";
 import { WASGenerator } from "../pages/WASGenerator";
 import { PFPAnima } from "../pages/PFPAnima";
+import ImageColourizer from "../pages/ImageColourizer";
 
 const TOOL_COMPONENTS: Record<string, React.ComponentType> = {
   'background-remover': BackgroundRemover,
-  'image-upscaler': ImageUpscaler,
-  'image-colorizer': ImageColorizer,
   'qr-code-generator': QrGenerator,
   'smart-code-generator': SmartCodeGenerator,
-  'code-base': CodeBase,
   'pdf-converter': PdfConverter,
   'whatsapp-s-create': WhatsappSCreate,
-  'whatsapp-s-create-video': WhatsappSCreateVideo,
   'image-dataset-collector': ImageDatasetCollector,
   'wa-s-generator': WASGenerator,
   'pfp-anima': PFPAnima,
+  'image-colourizer': ImageColourizer,
 };
 
 export function ToolManager() {

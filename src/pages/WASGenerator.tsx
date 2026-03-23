@@ -182,13 +182,22 @@ export function WASGenerator() {
           for (const sub of subreddits) {
             const res = await fetchWithProxy(`https://www.reddit.com/r/${sub}/search.json?q=${encodeURIComponent(baseQuery)}&restrict_sr=1&sort=relevance&limit=50`);
             if (res && res.ok) {
-              const data = await res.json();
-              data.data?.children?.forEach((child: any) => {
-                const post = child.data;
-                if (post.url && (post.url.endsWith('.jpg') || post.url.endsWith('.png') || post.url.endsWith('.jpeg'))) {
-                  addResult({ id: `rd-${post.id}`, url: post.url, source: `Reddit r/${sub}` });
+              const contentType = res.headers.get("content-type");
+              if (contentType && contentType.includes("application/json")) {
+                try {
+                  const data = await res.json();
+                  data.data?.children?.forEach((child: any) => {
+                    const post = child.data;
+                    if (post.url && (post.url.endsWith('.jpg') || post.url.endsWith('.png') || post.url.endsWith('.jpeg'))) {
+                      addResult({ id: `rd-${post.id}`, url: post.url, source: `Reddit r/${sub}` });
+                    }
+                  });
+                } catch (jsonErr) {
+                  console.warn(`Reddit JSON parse failed for r/${sub}`);
                 }
-              });
+              } else {
+                console.warn(`Reddit returned non-JSON response for r/${sub}`);
+              }
             }
           }
         } catch (err) { console.error("Reddit failed", err); }

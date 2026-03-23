@@ -73,25 +73,6 @@ export function Themes() {
           </p>
         </div>
 
-        {/* Green Leaf Petals Theme */}
-        <div 
-          onClick={() => handleThemeSelect('green-leaf-petals')}
-          className={cn(
-            "cursor-pointer rounded-2xl border-2 p-6 transition-all hover:shadow-md",
-            activeTheme === 'green-leaf-petals' 
-              ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20" 
-              : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-emerald-300"
-          )}
-        >
-          <div className="flex justify-between items-start mb-4">
-            <h3 className="text-lg font-bold text-slate-900 dark:text-white">Green Leaf Petals</h3>
-            {activeTheme === 'green-leaf-petals' && <CheckCircle2 className="w-6 h-6 text-emerald-500" />}
-          </div>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            Calm and premium falling green leaf petals.
-          </p>
-        </div>
-
         {/* Cinematic Nature Theme */}
         <div 
           onClick={() => handleThemeSelect('cinematic-nature')}
@@ -108,6 +89,25 @@ export function Themes() {
           </div>
           <p className="text-sm text-slate-500 dark:text-slate-400">
             Highly immersive, cinematic, nature-based animated environment with water ripples and fireflies.
+          </p>
+        </div>
+
+        {/* Eid Ul Fitr Theme */}
+        <div 
+          onClick={() => handleThemeSelect('eid-ul-fitr')}
+          className={cn(
+            "cursor-pointer rounded-2xl border-2 p-6 transition-all hover:shadow-md",
+            activeTheme === 'eid-ul-fitr' 
+              ? "border-amber-500 bg-amber-50 dark:bg-amber-900/20" 
+              : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-amber-300"
+          )}
+        >
+          <div className="flex justify-between items-start mb-4">
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white">Eid Ul Fitr</h3>
+            {activeTheme === 'eid-ul-fitr' && <CheckCircle2 className="w-6 h-6 text-amber-500" />}
+          </div>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            Celebrate with a beautiful animated crescent moon, stars, and festive lanterns.
           </p>
         </div>
       </div>

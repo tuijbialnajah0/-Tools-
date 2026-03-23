@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { removeBackground } from "@imgly/background-removal";
+import { GoogleGenAI } from "@google/genai";
 
 export function BackgroundRemover() {
   const [originalImage, setOriginalImage] = useState<string | null>(null);
@@ -31,9 +32,16 @@ export function BackgroundRemover() {
   const [bgColor, setBgColor] = useState("#ffffff");
   const [bgGradient, setBgGradient] = useState("linear-gradient(135deg, #667eea 0%, #764ba2 100%)");
   const [blurAmount, setBlurAmount] = useState(10);
+  const [engine, setEngine] = useState<"offline" | "gemini">("offline");
+  const [modelSize, setModelSize] = useState<"isnet_quint8" | "isnet_fp16">("isnet_quint8");
+  const [isCrossIsolated, setIsCrossIsolated] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setIsCrossIsolated(window.crossOriginIsolated);
+  }, []);
 
   // Removed simulated progress to use actual progress from the library
   useEffect(() => {
@@ -84,28 +92,89 @@ export function BackgroundRemover() {
     setIsProcessing(true);
     setError(null);
     setProgress(0);
-    setProgressText("Initializing offline model...");
-
-    try {
-      // Use local @imgly/background-removal (Offline capable after first download)
-      const resultBlob = await removeBackground(originalImage, {
-        progress: (key, current, total) => {
-          const percent = Math.round((current / total) * 100);
-          if (key.includes("fetch")) {
-            setProgressText(`Downloading AI Model: ${percent}%`);
-          } else {
-            setProgressText(`Processing Image: ${percent}%`);
+    
+    if (engine === "offline") {
+      setProgressText("Initializing offline model...");
+      try {
+        // Use local @imgly/background-removal (Offline capable after first download)
+        const resultBlob = await removeBackground(originalImage, {
+          model: modelSize,
+          progress: (key, current, total) => {
+            if (!total || total === 0) {
+              setProgressText(`Initializing ${key}...`);
+              return;
+            }
+            const percent = Math.round((current / total) * 100);
+            if (key.includes("fetch")) {
+              setProgressText(`Downloading AI Model (${modelSize}): ${percent}%`);
+            } else if (key.includes("compute")) {
+              setProgressText(`AI Inference: ${percent}%`);
+            } else {
+              setProgressText(`Processing Image: ${percent}%`);
+            }
+            setProgress(percent);
           }
-          setProgress(percent);
+        });
+        const resultUrl = URL.createObjectURL(resultBlob);
+        setProcessedImage(resultUrl);
+      } catch (err: any) {
+        console.error("Background removal error:", err);
+        let msg = err.message || "Failed to process image.";
+        if (msg.includes("SharedArrayBuffer")) {
+          msg = "Multi-threading error. Please try refreshing the page or using Gemini Cloud.";
         }
-      });
-      const resultUrl = URL.createObjectURL(resultBlob);
-      setProcessedImage(resultUrl);
-    } catch (err: any) {
-      console.error("Background removal error:", err);
-      setError(err.message || "Failed to process image. Please try again.");
-    } finally {
-      setIsProcessing(false);
+        setError(msg);
+      } finally {
+        setIsProcessing(false);
+      }
+    } else {
+      setProgressText("Connecting to Gemini AI...");
+      setProgress(30);
+      try {
+        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+        
+        // Extract base64 data and mime type
+        const base64Data = originalImage.split(',')[1];
+        const mimeType = originalImage.split(';')[0].split(':')[1];
+
+        const response = await ai.models.generateContent({
+          model: 'gemini-2.5-flash-image',
+          contents: {
+            parts: [
+              {
+                inlineData: {
+                  data: base64Data,
+                  mimeType: mimeType,
+                },
+              },
+              {
+                text: 'Remove the background from this image. Return only the image with a transparent background as an image part.',
+              },
+            ],
+          },
+        });
+
+        let foundImage = false;
+        for (const part of response.candidates[0].content.parts) {
+          if (part.inlineData) {
+            const resultBase64 = part.inlineData.data;
+            setProcessedImage(`data:image/png;base64,${resultBase64}`);
+            foundImage = true;
+            break;
+          }
+        }
+
+        if (!foundImage) {
+          throw new Error('AI did not return a processed image. Please try again.');
+        }
+        setProgress(100);
+        setProgressText("Complete!");
+      } catch (err: any) {
+        console.error("Gemini Background removal error:", err);
+        setError(err.message || "Failed to process image with Gemini AI. Please try again.");
+      } finally {
+        setIsProcessing(false);
+      }
     }
   };
 
@@ -257,6 +326,83 @@ export function BackgroundRemover() {
                 >
                   <Trash2 className="w-5 h-5" />
                 </button>
+              </div>
+
+              <div className="space-y-3">
+                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center">
+                  <Layers className="w-4 h-4 mr-2 text-indigo-500" />
+                  Model Size (Offline Only)
+                </label>
+                {!isCrossIsolated && (
+                  <div className="p-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg flex items-start space-x-2">
+                    <AlertCircle className="w-3 h-3 text-amber-500 flex-shrink-0 mt-0.5" />
+                    <p className="text-[9px] text-amber-700 dark:text-amber-400">
+                      Browser isolation disabled. Processing might be slower or stuck.
+                    </p>
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => setModelSize("isnet_quint8")}
+                    disabled={engine !== "offline"}
+                    className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all ${
+                      modelSize === "isnet_quint8" 
+                        ? "bg-indigo-50 dark:bg-indigo-900/20 border-indigo-500 text-indigo-600 dark:text-indigo-400" 
+                        : "bg-slate-50 dark:bg-slate-800 border-transparent text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700"
+                    } ${engine !== "offline" ? "opacity-30 cursor-not-allowed" : ""}`}
+                  >
+                    <span className="text-[10px] font-bold uppercase">Small</span>
+                    <span className="text-[8px] opacity-60">~40MB</span>
+                  </button>
+                  <button
+                    onClick={() => setModelSize("isnet_fp16")}
+                    disabled={engine !== "offline"}
+                    className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all ${
+                      modelSize === "isnet_fp16" 
+                        ? "bg-indigo-50 dark:bg-indigo-900/20 border-indigo-500 text-indigo-600 dark:text-indigo-400" 
+                        : "bg-slate-50 dark:bg-slate-800 border-transparent text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700"
+                    } ${engine !== "offline" ? "opacity-30 cursor-not-allowed" : ""}`}
+                  >
+                    <span className="text-[10px] font-bold uppercase">Medium</span>
+                    <span className="text-[8px] opacity-60">~80MB</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center">
+                  <Sparkles className="w-4 h-4 mr-2 text-indigo-500" />
+                  AI Engine
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => setEngine("offline")}
+                    className={`flex flex-col items-center justify-center p-3 rounded-xl border transition-all ${
+                      engine === "offline" 
+                        ? "bg-indigo-50 dark:bg-indigo-900/20 border-indigo-500 text-indigo-600 dark:text-indigo-400" 
+                        : "bg-slate-50 dark:bg-slate-800 border-transparent text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700"
+                    }`}
+                  >
+                    <Layers className="w-4 h-4 mb-1" />
+                    <span className="text-[10px] font-bold uppercase">Offline</span>
+                  </button>
+                  <button
+                    onClick={() => setEngine("gemini")}
+                    className={`flex flex-col items-center justify-center p-3 rounded-xl border transition-all ${
+                      engine === "gemini" 
+                        ? "bg-indigo-50 dark:bg-indigo-900/20 border-indigo-500 text-indigo-600 dark:text-indigo-400" 
+                        : "bg-slate-50 dark:bg-slate-800 border-transparent text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700"
+                    }`}
+                  >
+                    <Sparkles className="w-4 h-4 mb-1" />
+                    <span className="text-[10px] font-bold uppercase">Gemini Cloud</span>
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 italic">
+                  {engine === "offline" 
+                    ? "Uses your device's power. No data sent to cloud." 
+                    : "Uses Google's powerful AI. Faster for complex images."}
+                </p>
               </div>
 
               {!processedImage ? (

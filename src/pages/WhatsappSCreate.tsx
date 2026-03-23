@@ -4,7 +4,7 @@ import { ChevronLeft, Upload, X, CheckCircle2, AlertCircle, Download, MessageCir
 import JSZip from "jszip";
 import CropWorker from "../workers/cropWorker?worker";
 
-const MAX_PICS = 30;
+const STICKERS_PER_PACK = 30;
 
 interface StickerFile {
   id: string;
@@ -12,13 +12,18 @@ interface StickerFile {
   preview: string;
 }
 
+interface PackResult {
+  url: string;
+  name: string;
+}
+
 export function WhatsappSCreate() {
   const [stickers, setStickers] = useState<StickerFile[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [resultUrl, setResultUrl] = useState<string | null>(null);
+  const [resultPacks, setResultPacks] = useState<PackResult[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [packName, setPackName] = useState("My Sticker Pack");
+  const [packNames, setPackNames] = useState<string[]>(["My Sticker Pack"]);
   const [showInstructions, setShowInstructions] = useState(false);
   const [step, setStep] = useState<1 | 2 | 3>(1);
   
@@ -38,6 +43,21 @@ export function WhatsappSCreate() {
     } else if (stickers.length === 0 && step === 2) {
       setStep(1);
     }
+    
+    // Update pack names array size based on number of stickers
+    const neededPacks = Math.max(1, Math.ceil(stickers.length / STICKERS_PER_PACK));
+    setPackNames(prev => {
+      if (prev.length === neededPacks) return prev;
+      const next = [...prev];
+      if (next.length < neededPacks) {
+        for (let i = next.length; i < neededPacks; i++) {
+          next.push(`My Sticker Pack ${i + 1}`);
+        }
+      } else {
+        return next.slice(0, neededPacks);
+      }
+      return next;
+    });
   }, [stickers.length]);
 
   // Cleanup previews on unmount
@@ -62,34 +82,49 @@ export function WhatsappSCreate() {
     }
   };
 
-  const validateAndAddFiles = (newFiles: File[]) => {
+  const validateAndAddFiles = async (newFiles: File[]) => {
     setError(null);
-    setResultUrl(null);
+    setResultPacks([]);
     
     const validFiles: StickerFile[] = [];
 
     for (const file of newFiles) {
-      if (!file.type.startsWith("image/")) {
-        setError("Unsupported file format. Please upload images only.");
-        continue;
+      if (file.type === "application/zip" || file.name.endsWith(".zip") || file.type === "application/x-zip-compressed") {
+        try {
+          const zip = await JSZip.loadAsync(file);
+          const zipEntries = Object.values(zip.files);
+          
+          for (const entry of zipEntries) {
+            if (!entry.dir && entry.name.match(/\.(jpg|jpeg|png|webp|gif|bmp)$/i)) {
+              const blob = await entry.async("blob");
+              const extension = entry.name.split('.').pop()?.toLowerCase() || 'png';
+              const mimeType = extension === 'jpg' ? 'image/jpeg' : `image/${extension}`;
+              const extractedFile = new File([blob], entry.name, { type: mimeType });
+              
+              validFiles.push({
+                id: Math.random().toString(36).substring(7),
+                file: extractedFile,
+                preview: URL.createObjectURL(extractedFile)
+              });
+            }
+          }
+        } catch (err) {
+          console.error("Error extracting zip:", err);
+          setError("Failed to extract one or more ZIP files.");
+        }
+      } else if (file.type.startsWith("image/")) {
+        validFiles.push({
+          id: Math.random().toString(36).substring(7),
+          file,
+          preview: URL.createObjectURL(file)
+        });
+      } else {
+        setError("Unsupported file format. Please upload images or ZIP files only.");
       }
-      
-      validFiles.push({
-        id: Math.random().toString(36).substring(7),
-        file,
-        preview: URL.createObjectURL(file)
-      });
     }
 
     if (validFiles.length > 0) {
-      setStickers((prev) => {
-        const combined = [...prev, ...validFiles];
-        if (combined.length > MAX_PICS) {
-          setError(`You can only select up to ${MAX_PICS} pictures.`);
-          return combined.slice(0, MAX_PICS);
-        }
-        return combined;
-      });
+      setStickers((prev) => [...prev, ...validFiles]);
     }
   };
 
@@ -217,25 +252,38 @@ export function WhatsappSCreate() {
     setProgress(0);
 
     try {
-      const zip = new JSZip();
-      
-      zip.file("title.txt", packName.trim() || "My Sticker Pack");
-      zip.file("author.txt", "ͲႮᏆᎫᏴᏆᎪᏞΝΑᎫΑΉ·Kҽɳƈԋσ Aʅʅιαɳƈҽ");
-      
-      const trayBlob = await convertToWebP(stickers[0].file, 96);
-      zip.file("tray.png", trayBlob);
+      const results: PackResult[] = [];
+      const totalPacks = Math.ceil(stickers.length / STICKERS_PER_PACK);
 
-      for (let i = 0; i < stickers.length; i++) {
-        const webpBlob = await convertToWebP(stickers[i].file, 512);
-        zip.file(`${i + 1}.webp`, webpBlob);
-        setProgress(Math.round(((i + 1) / stickers.length) * 90));
+      for (let p = 0; p < totalPacks; p++) {
+        const zip = new JSZip();
+        const currentPackName = packNames[p] || `Sticker Pack ${p + 1}`;
+        const startIdx = p * STICKERS_PER_PACK;
+        const endIdx = Math.min(startIdx + STICKERS_PER_PACK, stickers.length);
+        const packStickers = stickers.slice(startIdx, endIdx);
+
+        zip.file("title.txt", currentPackName.trim() || "My Sticker Pack");
+        zip.file("author.txt", "ͲႮᏆᎫᏴᏆᎪᏞΝΑᎫΑΉ·Kҽɳƈԋσ Aʅʅιαɳƈҽ");
+        
+        const trayBlob = await convertToWebP(packStickers[0].file, 96);
+        zip.file("tray.png", trayBlob);
+
+        for (let i = 0; i < packStickers.length; i++) {
+          const webpBlob = await convertToWebP(packStickers[i].file, 512);
+          zip.file(`${i + 1}.webp`, webpBlob);
+          
+          // Overall progress calculation
+          const completedStickers = p * STICKERS_PER_PACK + i + 1;
+          setProgress(Math.round((completedStickers / stickers.length) * 95));
+        }
+
+        const zipBlob = await zip.generateAsync({ type: "blob" });
+        const customBlob = new Blob([zipBlob], { type: "application/octet-stream" });
+        const url = URL.createObjectURL(customBlob);
+        results.push({ url, name: currentPackName });
       }
 
-      const zipBlob = await zip.generateAsync({ type: "blob" });
-      const customBlob = new Blob([zipBlob], { type: "application/octet-stream" });
-      
-      const url = URL.createObjectURL(customBlob);
-      setResultUrl(url);
+      setResultPacks(results);
       setProgress(100);
       setStep(3);
 
@@ -250,19 +298,18 @@ export function WhatsappSCreate() {
   const reset = () => {
     stickers.forEach(s => URL.revokeObjectURL(s.preview));
     setStickers([]);
-    setResultUrl(null);
+    setResultPacks([]);
     setError(null);
     setProgress(0);
-    setPackName("My Sticker Pack");
+    setPackNames(["My Sticker Pack"]);
     setShowInstructions(false);
     setStep(1);
   };
 
-  const handleDownloadPack = () => {
-    if (!resultUrl) return;
+  const handleDownloadPack = (url: string, name: string) => {
     const a = document.createElement('a');
-    a.href = resultUrl;
-    a.download = `${(packName.trim() || 'sticker-pack').replace(/[^a-z0-9]/gi, '_').toLowerCase()}.wastickers`;
+    a.href = url;
+    a.download = `${(name.trim() || 'sticker-pack').replace(/[^a-z0-9]/gi, '_').toLowerCase()}.wastickers`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -293,7 +340,7 @@ export function WhatsappSCreate() {
         type="file"
         ref={fileInputRef}
         onChange={handleFileChange}
-        accept="image/*"
+        accept="image/*,.zip"
         multiple
         className="hidden"
       />
@@ -309,9 +356,9 @@ export function WhatsappSCreate() {
             <div className="w-20 h-20 bg-green-50 dark:bg-green-900/20 rounded-full flex items-center justify-center mx-auto mb-6">
               <Upload className="w-10 h-10 text-green-600 dark:text-green-400" />
             </div>
-            <h3 className="text-2xl font-bold text-slate-900 dark:text-white mb-3">Upload Pictures</h3>
+            <h3 className="text-2xl font-bold text-slate-900 dark:text-white mb-3">Upload Pictures or ZIP</h3>
             <p className="text-slate-500 dark:text-slate-400 mb-8 max-w-sm mx-auto">
-              Drag and drop your images here, or click to browse. Max 30 pictures per pack.
+              Drag and drop your images or ZIP files here, or click to browse. Images will be split into packs of 30 automatically.
             </p>
             <button
               className="px-10 py-4 bg-green-600 text-white font-bold rounded-2xl hover:bg-green-700 transition-all shadow-lg shadow-green-200 dark:shadow-none transform hover:scale-105 active:scale-95"
@@ -336,7 +383,7 @@ export function WhatsappSCreate() {
               <div className="flex items-center justify-between mb-6">
                 <div>
                   <h3 className="text-xl font-bold text-slate-900 dark:text-white">Selected Images</h3>
-                  <p className="text-sm text-slate-500">{stickers.length} of {MAX_PICS} slots used</p>
+                  <p className="text-sm text-slate-500">{stickers.length} images selected ({Math.ceil(stickers.length / STICKERS_PER_PACK)} packs)</p>
                 </div>
                 <div className="flex items-center space-x-3">
                   <button 
@@ -370,17 +417,15 @@ export function WhatsappSCreate() {
                     </button>
                   </div>
                 ))}
-                {stickers.length < MAX_PICS && (
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="aspect-square rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center text-slate-400 hover:border-green-500 hover:text-green-500 hover:bg-green-50/50 dark:hover:bg-green-900/10 transition-all group"
-                  >
-                    <div className="w-12 h-12 bg-slate-50 dark:bg-slate-800 rounded-full flex items-center justify-center mb-2 group-hover:bg-green-100 dark:group-hover:bg-green-900/30 transition-colors">
-                      <Plus className="w-6 h-6" />
-                    </div>
-                    <span className="text-xs font-bold uppercase tracking-widest">Add More</span>
-                  </button>
-                )}
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="aspect-square rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center text-slate-400 hover:border-green-500 hover:text-green-500 hover:bg-green-50/50 dark:hover:bg-green-900/10 transition-all group"
+                >
+                  <div className="w-12 h-12 bg-slate-50 dark:bg-slate-800 rounded-full flex items-center justify-center mb-2 group-hover:bg-green-100 dark:group-hover:bg-green-900/30 transition-colors">
+                    <Plus className="w-6 h-6" />
+                  </div>
+                  <span className="text-xs font-bold uppercase tracking-widest">Add More</span>
+                </button>
               </div>
             </div>
           </div>
@@ -391,23 +436,26 @@ export function WhatsappSCreate() {
                 <MessageCircle className="w-5 h-5 mr-2 text-green-600" />
                 Pack Settings
               </h3>
-              <div className="space-y-6">
-                <div>
-                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
-                    Pack Name
-                  </label>
-                  <input
-                    type="text"
-                    value={packName}
-                    onChange={(e) => setPackName(e.target.value)}
-                    placeholder="Enter pack name..."
-                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl focus:ring-2 focus:ring-green-500 outline-none transition-all dark:text-white font-medium"
-                  />
-                  <p className="text-[10px] text-slate-400 mt-2 font-medium uppercase tracking-wider">
-                    Author: ͲႮᏆᎫᏴᏆᎪᏞΝΑᎫΑΗ·Kҽɳƈԋσ Aʅʅιαɳƈҽ
-                  </p>
-                </div>
-
+              <div className="space-y-6 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                {packNames.map((name, idx) => (
+                  <div key={idx} className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700">
+                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider">
+                      Pack {idx + 1} Name ({Math.min(30, stickers.length - idx * 30)} stickers)
+                    </label>
+                    <input
+                      type="text"
+                      value={name}
+                      onChange={(e) => {
+                        const next = [...packNames];
+                        next[idx] = e.target.value;
+                        setPackNames(next);
+                      }}
+                      placeholder={`Enter pack ${idx + 1} name...`}
+                      className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-green-500 outline-none transition-all dark:text-white font-medium text-sm"
+                    />
+                  </div>
+                ))}
+                
                 <div className="p-5 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700">
                   <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">
                     WhatsApp Specs
@@ -461,26 +509,35 @@ export function WhatsappSCreate() {
             <CheckCircle2 className="w-10 h-10 text-emerald-600 dark:text-emerald-400" />
           </div>
           <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-4">
-            Pack Created!
+            Packs Created!
           </h2>
           <p className="text-slate-600 dark:text-slate-400 mb-8 max-w-md mx-auto">
-            Your sticker pack is ready. Download it and open with any sticker maker app.
+            {resultPacks.length} sticker packs are ready. Download them and open with any sticker maker app.
           </p>
           
-          <div className="flex flex-col gap-4 justify-center max-w-md mx-auto mb-8">
-            <button
-              onClick={handleDownloadPack}
-              className="w-full py-5 bg-green-600 hover:bg-green-700 text-white font-black text-lg rounded-3xl shadow-xl shadow-green-200 dark:shadow-none transition-all flex items-center justify-center transform hover:scale-[1.02] active:scale-95"
-            >
-              <Download className="w-6 h-6 mr-3" />
-              Download Pack
-            </button>
-            
+          <div className="space-y-4 max-w-md mx-auto mb-8 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+            {resultPacks.map((pack, idx) => (
+              <div key={idx} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700">
+                <div className="text-left">
+                  <p className="font-bold text-slate-900 dark:text-white truncate max-w-[200px]">{pack.name}</p>
+                  <p className="text-xs text-slate-500">Pack {idx + 1}</p>
+                </div>
+                <button
+                  onClick={() => handleDownloadPack(pack.url, pack.name)}
+                  className="p-3 bg-green-600 hover:bg-green-700 text-white rounded-xl transition-all shadow-md"
+                >
+                  <Download className="w-5 h-5" />
+                </button>
+              </div>
+            ))}
+          </div>
+          
+          <div className="flex flex-col gap-4 justify-center max-w-md mx-auto">
             <button
               onClick={reset}
               className="w-full py-4 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold rounded-2xl hover:bg-slate-200 dark:hover:bg-slate-700 transition-all"
             >
-              Create Another Pack
+              Create More Packs
             </button>
           </div>
         </div>

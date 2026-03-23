@@ -149,21 +149,30 @@ export function PFPAnima() {
             try {
               const res = await fetchWithProxy(`https://www.reddit.com/r/${sub}/search.json?q=${encodeURIComponent(baseQuery)}&restrict_sr=on&sort=relevance&t=all&limit=50`);
               if (res && res.ok) {
-                const data = await res.json();
-                const posts = data.data?.children || [];
-                posts.forEach((post: any) => {
-                  const d = post.data;
-                  if (d.url && (d.url.endsWith('.jpg') || d.url.endsWith('.png') || d.url.endsWith('.jpeg'))) {
-                    addResult({
-                      id: `reddit-${d.id}`,
-                      url: d.url.split('?')[0],
-                      thumbnail: d.thumbnail && d.thumbnail.startsWith('http') ? d.thumbnail : d.url.split('?')[0],
-                      source: 'Reddit',
-                      sourceUrl: `https://reddit.com${d.permalink}`,
-                      title: d.title,
+                const contentType = res.headers.get("content-type");
+                if (contentType && contentType.includes("application/json")) {
+                  try {
+                    const data = await res.json();
+                    const posts = data.data?.children || [];
+                    posts.forEach((post: any) => {
+                      const d = post.data;
+                      if (d.url && (d.url.endsWith('.jpg') || d.url.endsWith('.png') || d.url.endsWith('.jpeg'))) {
+                        addResult({
+                          id: `reddit-${d.id}`,
+                          url: d.url.split('?')[0],
+                          thumbnail: d.thumbnail && d.thumbnail.startsWith('http') ? d.thumbnail : d.url.split('?')[0],
+                          source: 'Reddit',
+                          sourceUrl: `https://reddit.com${d.permalink}`,
+                          title: d.title,
+                        });
+                      }
                     });
+                  } catch (jsonErr) {
+                    console.warn(`Reddit JSON parse failed for r/${sub}`);
                   }
-                });
+                } else {
+                  console.warn(`Reddit returned non-JSON response for r/${sub}`);
+                }
               }
             } catch (e) {}
           });

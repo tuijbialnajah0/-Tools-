@@ -1,248 +1,355 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
+import cors from "cors";
 import path from "path";
+import { Readable } from "stream";
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  app.use(express.json());
+  app.use(cors());
 
-  // API routes
-  app.get("/api/health", (req, res) => {
-    res.json({ status: "ok" });
+  // Enable SharedArrayBuffer for AI models
+  app.use((req, res, next) => {
+    res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+    res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
+    next();
   });
 
-  // Simple in-memory cache for search results
-  const searchCache = new Map<string, { results: any[], timestamp: number }>();
-  const CACHE_TTL = 1000 * 60 * 15; // 15 minutes
+  // Proxy route for downloading videos
+  app.get("/api/download", async (req, res) => {
+    try {
+      const videoUrl = req.query.url as string;
+      const title = req.query.title as string || "video";
 
-  app.get("/api/search-images", async (req, res) => {
-    const keyword = req.query.q as string;
-    const page = parseInt(req.query.page as string) || 1;
-    
-    if (!keyword) {
-      return res.status(400).json({ error: "Keyword is required" });
-    }
+      if (!videoUrl) {
+        return res.status(400).json({ error: "URL is required" });
+      }
 
-    // Check cache
-    const cacheKey = `${keyword}-${page}`;
-    const cached = searchCache.get(cacheKey);
-    if (cached && (Date.now() - cached.timestamp < CACHE_TTL)) {
-      return res.json({ results: cached.results, cached: true });
-    }
-
-    const allResults: any[] = [];
-
-    // Clean keyword for specific sources (Safebooru/Wikimedia)
-    const cleanKeyword = keyword
-      .replace(/aesthetic/gi, '')
-      .replace(/pinterest/gi, '')
-      .replace(/anime/gi, '')
-      .replace(/\s+/g, ' ')
-      .trim();
-
-    const searchSources = async () => {
-      // Helper to safely parse JSON from proxy responses
-      const safeParse = (data: any) => {
-        if (!data) return null;
-        try {
-          if (typeof data === 'string') return JSON.parse(data);
-          if (data.contents && typeof data.contents === 'string') return JSON.parse(data.contents);
-          return data.contents || data;
-        } catch (e) {
-          return null;
+      // Fetch the video from the source
+      const response = await fetch(videoUrl, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          "Accept": "*/*"
         }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch video: ${response.status} ${response.statusText}`);
+      }
+
+      const contentType = response.headers.get("content-type") || "video/mp4";
+      const contentLength = response.headers.get("content-length");
+
+      // Set headers to force download
+      res.setHeader("Content-Disposition", `attachment; filename="${title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.mp4"`);
+      res.setHeader("Content-Type", contentType);
+      if (contentLength) {
+        res.setHeader("Content-Length", contentLength);
+      }
+
+      // Stream the response body to the client
+      if (response.body) {
+        Readable.fromWeb(response.body as any).pipe(res);
+      } else {
+        res.status(500).json({ error: "Response body is empty" });
+      }
+
+    } catch (error: any) {
+      console.error("Download proxy error:", error);
+      res.status(500).json({ error: error.message || "Failed to download video" });
+    }
+  });
+
+  // Proxy route for image search and fetching
+  app.get("/api/proxy-booru", async (req, res) => {
+    try {
+      const targetUrl = req.query.url as string;
+      if (!targetUrl) return res.status(400).json({ error: "URL is required" });
+
+      const urlObj = new URL(targetUrl);
+      
+      const fetchWithHeaders = async (url: string, headers: Record<string, string>) => {
+        const urlObj = new URL(url);
+        return await fetch(url, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Referer": `${urlObj.protocol}//${urlObj.hostname}/`,
+            ...headers
+          }
+        });
       };
 
-      // Create multiple search variations to ensure variety (Anime, Cosplay, Fanart)
-      const variations = [
-        keyword, // Original
-        `${keyword} anime art`,
-        `${keyword} cosplay`,
-        `${keyword} fanart high quality`
-      ];
+      let response = await fetchWithHeaders(targetUrl, {});
 
-      const tasks = [
-        // 1. DuckDuckGo (Primary - with variations for variety)
-        ...variations.map((query, vIdx) => (async () => {
-          try {
-            const ddgUrl = `https://duckduckgo.com/?q=${encodeURIComponent(query)}`;
-            const proxies = [
-              `https://api.allorigins.win/get?url=${encodeURIComponent(ddgUrl)}`,
-              `https://api.codetabs.com/v1/proxy?url=${encodeURIComponent(ddgUrl)}`,
-              `https://thingproxy.freeboard.io/fetch/${encodeURIComponent(ddgUrl)}`
-            ];
-            
-            const vqd = await Promise.any(proxies.map(async (proxy) => {
-              try {
-                const vqdRes = await fetch(proxy, { signal: AbortSignal.timeout(4000) });
-                if (vqdRes.ok) {
-                  const vqdData = await vqdRes.json().catch(() => null);
-                  if (!vqdData) throw new Error("Invalid JSON from proxy");
-                  
-                  const contents = vqdData.contents || vqdData; 
-                  const html = typeof contents === 'string' ? contents : JSON.stringify(contents);
-                  const match = html.match(/vqd="([^"]+)"/) || html.match(/vqd=([a-zA-Z0-9-]+)/);
-                  if (match) return match[1];
+      // If 401 (Unauthorized) or 403 (Forbidden), try fallbacks
+      if (!response.ok && (response.status === 401 || response.status === 403)) {
+        console.warn(`Booru primary fetch failed with ${response.status} for ${targetUrl}, trying fallback strategies...`);
+        
+        // Strategy 1: Try with a different User-Agent (Mobile)
+        const mobileRes = await fetchWithHeaders(targetUrl, {
+          "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1"
+        });
+        
+        if (mobileRes.ok) {
+          response = mobileRes;
+        } else {
+          // Strategy 2: Try a public CORS proxy
+          const fallbackProxies = [
+            `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`,
+            `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`,
+            `https://api.codetabs.com/v1/proxy?url=${encodeURIComponent(targetUrl)}`
+          ];
+
+          for (const proxyUrl of fallbackProxies) {
+            try {
+              console.log(`Trying proxy: ${proxyUrl}`);
+              const proxyRes = await fetch(proxyUrl, {
+                headers: {
+                  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
                 }
-              } catch (e) { /* ignore */ }
-              throw new Error("VQD not found");
-            })).catch(() => null);
-
-            if (vqd) {
-              const offset = (page - 1) * 30; // Smaller offset per variation
-              const searchUrl = `https://duckduckgo.com/i.js?l=us-en&o=json&q=${encodeURIComponent(query)}&vqd=${vqd}&f=,,,,,&p=1&s=${offset}`;
-              const searchProxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(searchUrl)}`;
-              
-              const searchRes = await fetch(searchProxyUrl, { signal: AbortSignal.timeout(6000) });
-              if (searchRes.ok) {
-                const searchData = await searchRes.json().catch(() => null);
-                const parsedData = safeParse(searchData);
-                
-                if (parsedData && parsedData.results) {
-                  return parsedData.results.map((r: any, idx: number) => ({
-                    id: `ddg-${page}-${vIdx}-${idx}-${Math.random().toString(36).substr(2, 9)}`,
-                    url: r.image,
-                    thumbnail: r.thumbnail,
-                    source: "DuckDuckGo",
-                    sourceUrl: r.url,
-                    title: r.title || query,
-                    width: r.width,
-                    height: r.height,
-                    type: query.includes('cosplay') ? 'Cosplay' : (query.includes('anime') || query.includes('fanart') ? 'Anime/Art' : 'General')
-                  }));
-                }
+              });
+              if (proxyRes.ok) {
+                response = proxyRes;
+                console.log("Proxy fallback succeeded!");
+                break;
               }
+            } catch (e) {
+              console.warn(`Fallback proxy ${proxyUrl} failed`);
             }
-          } catch (e) {
-            // Silent fail for individual variations to avoid cluttering logs
           }
-          return [];
-        })()),
-
-        // 2. Safebooru (Strictly Anime/Manga)
-        (async () => {
-          try {
-            const safeTags = cleanKeyword.replace(/\s+/g, '_').toLowerCase();
-            const safeUrl = `https://safebooru.org/index.php?page=dapi&s=post&q=index&tags=${encodeURIComponent(safeTags)}&json=1&limit=50&pid=${page - 1}`;
-            const safeRes = await fetch(safeUrl, { signal: AbortSignal.timeout(6000) });
-            if (safeRes.ok) {
-              const text = await safeRes.text();
-              if (!text || text.trim() === "") return [];
-              
-              try {
-                const safeData = JSON.parse(text);
-                if (Array.isArray(safeData)) {
-                  return safeData.map((p: any, idx: number) => ({
-                    id: `safe-${page}-${idx}-${p.id}`,
-                    url: `https://safebooru.org/images/${p.directory}/${p.image}`,
-                    thumbnail: `https://safebooru.org/thumbnails/${p.directory}/thumbnail_${p.image}`,
-                    source: "Safebooru",
-                    sourceUrl: `https://safebooru.org/index.php?page=post&s=view&id=${p.id}`,
-                    title: p.tags || keyword,
-                    width: p.width,
-                    height: p.height,
-                    type: 'Anime/Art'
-                  }));
-                }
-              } catch (e) {
-                // Safebooru sometimes returns XML even when JSON is requested if there's an error
-                return [];
-              }
-            }
-          } catch (e) {
-            console.error("Safebooru search failed:", e);
-          }
-          return [];
-        })(),
-
-        // 3. Wikimedia (Fallback/Reliable)
-        (async () => {
-          try {
-            const offset = (page - 1) * 50;
-            const wikiUrl = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(cleanKeyword)}&gsrnamespace=6&gsrlimit=50&gsroffset=${offset}&prop=imageinfo&iiprop=url|size|extmetadata&format=json&origin=*`;
-            
-            const wikiRes = await fetch(wikiUrl, { signal: AbortSignal.timeout(6000) });
-            if (wikiRes.ok) {
-              const wikiData = await wikiRes.json();
-              if (wikiData && wikiData.query && wikiData.query.pages) {
-                const pages = Object.values(wikiData.query.pages) as any[];
-                return pages
-                  .filter(p => p.imageinfo && p.imageinfo[0])
-                  .map((p: any, idx: number) => {
-                    const info = p.imageinfo[0];
-                    return {
-                      id: `wiki-${page}-${idx}-${p.pageid}`,
-                      url: info.url,
-                      thumbnail: info.thumburl || info.url,
-                      source: "Wikimedia",
-                      sourceUrl: info.descriptionurl,
-                      title: p.title.replace('File:', '').replace(/\.[^/.]+$/, "") || keyword,
-                      width: info.width,
-                      height: info.height
-                    };
-                  });
-              }
-            }
-          } catch (e) {
-            console.error("Wikimedia search failed:", e);
-          }
-          return [];
-        })()
-      ];
-
-      const results = await Promise.allSettled(tasks);
-      results.forEach(res => {
-        if (res.status === 'fulfilled') {
-          allResults.push(...res.value);
         }
-      });
-    };
+      }
 
-    await searchSources();
-
-    // Deduplicate by URL
-    const uniqueResults = Array.from(
-      new Map(allResults.map(item => [item.url, item])).values()
-    );
-
-    // Save to cache
-    searchCache.set(cacheKey, { results: uniqueResults, timestamp: Date.now() });
-
-    return res.json({ results: uniqueResults });
+      if (!response.ok) {
+        console.error(`Booru fetch failed: ${response.status} for ${targetUrl}`);
+        // If it's still 401, maybe try to just return an empty array to avoid crashing the frontend
+        if (response.status === 401) {
+          return res.json([]); 
+        }
+        return res.status(response.status).json({ error: `Failed to fetch: ${response.status}` });
+      }
+      
+      const text = await response.text();
+      try {
+        const data = JSON.parse(text);
+        res.json(data);
+      } catch (e) {
+        // If it's not JSON, it might be XML or an error page
+        console.error("Failed to parse booru response as JSON:", text.substring(0, 100));
+        res.status(500).json({ error: "Invalid response format from Booru" });
+      }
+    } catch (error: any) {
+      console.error("Proxy booru error:", error);
+      res.status(500).json({ error: error.message });
+    }
   });
 
-  // Proxy image to bypass CORS when downloading
-  app.get("/api/proxy-image", async (req, res) => {
-    const imageUrl = req.query.url as string;
-    if (!imageUrl) {
-      return res.status(400).send("URL is required");
-    }
+  app.get("/api/search-duckduckgo", async (req, res) => {
+    const query = req.query.q as string;
+    if (!query) return res.status(400).json({ error: "Query is required" });
 
     try {
-      const imageRes = await fetch(imageUrl, {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          "Referer": new URL(imageUrl).origin
+      // 1. Get the vqd token - try multiple times or different patterns
+      const tokenRes = await fetch(`https://duckduckgo.com/?q=${encodeURIComponent(query)}&t=h_`, {
+        headers: { 
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+          "Accept-Language": "en-US,en;q=0.9"
         }
       });
-
-      if (!imageRes.ok) {
-        throw new Error(`Failed to fetch image: ${imageRes.statusText}`);
+      const text = await tokenRes.text();
+      
+      // Try multiple regex patterns for vqd
+      const vqdMatch = text.match(/vqd=['"]([^'"]+)['"]/) || 
+                       text.match(/vqd=([^&"']+)/) ||
+                       text.match(/\.vqd\s*=\s*['"]([^'"]+)['"]/) ||
+                       text.match(/vqd:['"]([^'"]+)['"]/);
+                       
+      if (!vqdMatch) {
+        // Fallback: try a different search URL if the first one failed to give a token
+        const fallbackRes = await fetch(`https://duckduckgo.com/html/?q=${encodeURIComponent(query)}`);
+        const fallbackText = await fallbackRes.text();
+        const fallbackVqd = fallbackText.match(/vqd=['"]([^'"]+)['"]/);
+        if (!fallbackVqd) {
+          console.error("DDG HTML sample (first 1000 chars):", text.substring(0, 1000));
+          throw new Error("Could not find vqd token");
+        }
+        var vqd = fallbackVqd[1];
+      } else {
+        var vqd = vqdMatch[1];
       }
 
-      const contentType = imageRes.headers.get("content-type");
-      if (contentType) {
-        res.setHeader("Content-Type", contentType);
+      // 2. Search for images
+      const searchUrl = `https://duckduckgo.com/i.js?l=us-en&o=json&q=${encodeURIComponent(query)}&vqd=${vqd}&f=,,,`;
+      const searchRes = await fetch(searchUrl, {
+        headers: { 
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+          "Referer": "https://duckduckgo.com/"
+        }
+      });
+      const data = await searchRes.json();
+      
+      const results = (data.results || []).map((r: any) => ({
+        id: `ddg-${Math.random().toString(36).substr(2, 9)}`,
+        url: r.image,
+        thumbnail: r.thumbnail,
+        source: "DuckDuckGo",
+        sourceUrl: r.url,
+        title: r.title,
+        width: r.width,
+        height: r.height
+      }));
+
+      res.json({ results });
+    } catch (error: any) {
+      console.error("DDG search error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/search-reddit", async (req, res) => {
+    const query = req.query.q as string;
+    if (!query) return res.status(400).json({ error: "Query is required" });
+
+    try {
+      const ddgQuery = `${query} site:reddit.com`;
+      
+      // 1. Get the vqd token
+      const tokenRes = await fetch(`https://duckduckgo.com/?q=${encodeURIComponent(ddgQuery)}&t=h_`, {
+        headers: { 
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+          "Accept-Language": "en-US,en;q=0.9"
+        }
+      });
+      const text = await tokenRes.text();
+      
+      const vqdMatch = text.match(/vqd=['"]([^'"]+)['"]/) || 
+                       text.match(/vqd=([^&"']+)/) ||
+                       text.match(/\.vqd\s*=\s*['"]([^'"]+)['"]/) ||
+                       text.match(/vqd:['"]([^'"]+)['"]/);
+                       
+      if (!vqdMatch) {
+        const fallbackRes = await fetch(`https://duckduckgo.com/html/?q=${encodeURIComponent(ddgQuery)}`);
+        const fallbackText = await fallbackRes.text();
+        const fallbackVqd = fallbackText.match(/vqd=['"]([^'"]+)['"]/);
+        if (!fallbackVqd) {
+          throw new Error("Could not find vqd token for Reddit search");
+        }
+        var vqd = fallbackVqd[1];
+      } else {
+        var vqd = vqdMatch[1];
       }
 
-      const arrayBuffer = await imageRes.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
-      res.send(buffer);
-    } catch (error) {
-      console.error("Image proxy failed:", error);
-      res.status(500).send("Failed to proxy image");
+      // 2. Search for images
+      const searchUrl = `https://duckduckgo.com/i.js?l=us-en&o=json&q=${encodeURIComponent(ddgQuery)}&vqd=${vqd}&f=,,,`;
+      const searchRes = await fetch(searchUrl, {
+        headers: { 
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+          "Referer": "https://duckduckgo.com/"
+        }
+      });
+      
+      if (!searchRes.ok) {
+        throw new Error(`DDG API failed: ${searchRes.status}`);
+      }
+      
+      const data = await searchRes.json();
+      
+      const results = (data.results || []).map((r: any) => ({
+        id: `reddit-${Math.random().toString(36).substr(2, 9)}`,
+        url: r.image,
+        thumbnail: r.thumbnail,
+        source: "Reddit",
+        sourceUrl: r.url,
+        title: r.title,
+        width: r.width,
+        height: r.height,
+        type: 'General'
+      }));
+        
+      res.json({ results });
+    } catch (error: any) {
+      console.error("Reddit search error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/image-proxy", async (req, res) => {
+    try {
+      const imageUrl = req.query.url as string;
+      if (!imageUrl) return res.status(400).send("URL is required");
+
+      const fetchWithHeaders = async (headers: any) => {
+        return await fetch(imageUrl, { headers });
+      };
+
+      const baseHeaders = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+      };
+
+      // Strategy 1: With Referer
+      let response = await fetchWithHeaders({
+        ...baseHeaders,
+        "Referer": new URL(imageUrl).origin
+      });
+
+      // Strategy 2: Without Referer
+      if (!response.ok && response.status === 403) {
+        response = await fetchWithHeaders(baseHeaders);
+      }
+
+      // Strategy 3: Empty Referer
+      if (!response.ok && response.status === 403) {
+        response = await fetchWithHeaders({
+          ...baseHeaders,
+          "Referer": ""
+        });
+      }
+
+      // Strategy 4: Different User-Agent
+      if (!response.ok && response.status === 403) {
+        response = await fetchWithHeaders({
+          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.1 Safari/605.1.15",
+          "Accept": "image/*,*/*;q=0.8",
+          "Referer": new URL(imageUrl).origin
+        });
+      }
+
+      // Strategy 5: Google Bot User-Agent
+      if (!response.ok && response.status === 403) {
+        response = await fetchWithHeaders({
+          "User-Agent": "Googlebot-Image/1.0",
+          "Accept": "image/*,*/*;q=0.8"
+        });
+      }
+
+      if (!response.ok) {
+        // Don't throw an error for standard HTTP failures (like 404, 403, 429), 
+        // just pass the status code back to the client so it can try its next fallback proxy.
+        return res.status(response.status).send(`Failed to fetch image: ${response.status}`);
+      }
+
+      const contentType = response.headers.get("content-type") || "image/jpeg";
+      res.setHeader("Content-Type", contentType);
+      
+      // Cache control
+      res.setHeader("Cache-Control", "public, max-age=86400");
+
+      if (response.body) {
+        Readable.fromWeb(response.body as any).pipe(res);
+      } else {
+        res.status(500).send("Empty response body");
+      }
+    } catch (error: any) {
+      // Only log actual network/code errors, not HTTP status errors
+      console.warn(`Image proxy network error for ${req.query.url}:`, error.message);
+      res.status(500).send("Failed to load image");
     }
   });
 
@@ -256,13 +363,13 @@ async function startServer() {
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
-    app.get('*', (req, res) => {
+    app.get('*all', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server v1.0.2 running on http://localhost:${PORT}`);
+    console.log(`Server running on http://localhost:${PORT}`);
   });
 }
 
