@@ -41,8 +41,8 @@ export function Themes() {
           className={cn(
             "cursor-pointer rounded-2xl border-2 p-6 transition-all hover:shadow-md",
             activeTheme === null 
-              ? "border-indigo-600 bg-indigo-50 dark:bg-indigo-900/20" 
-              : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-indigo-300"
+              ? "border-indigo-600 bg-indigo-50/50 dark:bg-indigo-900/40 backdrop-blur-md" 
+              : "glass border-slate-200/50 dark:border-slate-800/50 hover:border-indigo-300"
           )}
         >
           <div className="flex justify-between items-start mb-4">
@@ -60,8 +60,8 @@ export function Themes() {
           className={cn(
             "cursor-pointer rounded-2xl border-2 p-6 transition-all hover:shadow-md",
             activeTheme === 'pink-petals' 
-              ? "border-pink-500 bg-pink-50 dark:bg-pink-900/20" 
-              : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-pink-300"
+              ? "border-pink-500 bg-pink-50/50 dark:bg-pink-900/40 backdrop-blur-md" 
+              : "glass border-slate-200/50 dark:border-slate-800/50 hover:border-pink-300"
           )}
         >
           <div className="flex justify-between items-start mb-4">
@@ -79,8 +79,8 @@ export function Themes() {
           className={cn(
             "cursor-pointer rounded-2xl border-2 p-6 transition-all hover:shadow-md",
             activeTheme === 'cinematic-nature' 
-              ? "border-teal-500 bg-teal-50 dark:bg-teal-900/20" 
-              : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-teal-300"
+              ? "border-teal-500 bg-teal-50/50 dark:bg-teal-900/40 backdrop-blur-md" 
+              : "glass border-slate-200/50 dark:border-slate-800/50 hover:border-teal-300"
           )}
         >
           <div className="flex justify-between items-start mb-4">
@@ -98,8 +98,8 @@ export function Themes() {
           className={cn(
             "cursor-pointer rounded-2xl border-2 p-6 transition-all hover:shadow-md",
             activeTheme === 'eid-ul-fitr' 
-              ? "border-amber-500 bg-amber-50 dark:bg-amber-900/20" 
-              : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-amber-300"
+              ? "border-amber-500 bg-amber-50/50 dark:bg-amber-900/40 backdrop-blur-md" 
+              : "glass border-slate-200/50 dark:border-slate-800/50 hover:border-amber-300"
           )}
         >
           <div className="flex justify-between items-start mb-4">
@@ -108,6 +108,25 @@ export function Themes() {
           </div>
           <p className="text-sm text-slate-500 dark:text-slate-400">
             Celebrate with a beautiful animated crescent moon, stars, and festive lanterns.
+          </p>
+        </div>
+
+        {/* Itachi Uchiha Theme */}
+        <div 
+          onClick={() => handleThemeSelect('itachi-uchiha')}
+          className={cn(
+            "cursor-pointer rounded-2xl border-2 p-6 transition-all hover:shadow-md",
+            activeTheme === 'itachi-uchiha' 
+              ? "border-red-600 bg-red-50/50 dark:bg-red-900/40 backdrop-blur-md" 
+              : "glass border-slate-200/50 dark:border-slate-800/50 hover:border-red-300"
+          )}
+        >
+          <div className="flex justify-between items-start mb-4">
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white">Itachi Uchiha</h3>
+            {activeTheme === 'itachi-uchiha' && <CheckCircle2 className="w-6 h-6 text-red-600" />}
+          </div>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            Immerse yourself in the Uchiha atmosphere with flying crows, crimson glow, and Sharingan effects.
           </p>
         </div>
       </div>

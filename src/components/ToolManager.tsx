@@ -12,9 +12,11 @@ import { ImageDatasetCollector } from "../pages/ImageDatasetCollector";
 import { WASGenerator } from "../pages/WASGenerator";
 import { PFPAnima } from "../pages/PFPAnima";
 import ImageColourizer from "../pages/ImageColourizer";
+// import { OfflineBackgroundRemover } from "../pages/OfflineBackgroundRemover";
 
 const TOOL_COMPONENTS: Record<string, React.ComponentType> = {
   'background-remover': BackgroundRemover,
+  // 'offline-background-remover': OfflineBackgroundRemover,
   'qr-code-generator': QrGenerator,
   'smart-code-generator': SmartCodeGenerator,
   'pdf-converter': PdfConverter,

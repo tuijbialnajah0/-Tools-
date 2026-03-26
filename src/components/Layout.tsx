@@ -31,6 +31,7 @@ function cn(...inputs: (string | undefined | null | false)[]) {
 
 const TOOL_ICONS: Record<string, any> = {
   'background-remover': Image,
+  'offline-background-remover': Image,
   'qr-code-generator': QrCode,
   'smart-code-generator': FileCode,
   'pdf-converter': FileText,
@@ -87,10 +88,15 @@ export function Layout() {
   };
 
   return (
-    <div id="app-layout" className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col md:flex-row transition-colors duration-300 relative">
+    <div id="app-layout" className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col md:flex-row transition-colors duration-300 relative overflow-x-hidden">
+      <div className="fixed inset-0 z-0 pointer-events-none opacity-50 dark:opacity-30">
+        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-indigo-400/20 blur-[120px] animate-pulse" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-emerald-400/20 blur-[120px] animate-pulse delay-1000" />
+        <div className="absolute top-[20%] right-[10%] w-[30%] h-[30%] rounded-full bg-rose-400/20 blur-[100px] animate-pulse delay-700" />
+      </div>
       <ThemeEffects />
       {/* Mobile Header */}
-      <header className="md:hidden h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-4 sticky top-0 z-50">
+      <header className="md:hidden h-16 glass border-b border-slate-200/50 dark:border-slate-800/50 flex items-center justify-between px-4 sticky top-0 z-50">
         <div className="flex items-center">
           <Wrench className="w-6 h-6 text-indigo-600 mr-2" />
           <span className="text-lg font-semibold text-slate-900 dark:text-white">𝙱𝙹𝙴 ~ Tools</span>
@@ -123,11 +129,11 @@ export function Layout() {
       {/* Sidebar */}
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col z-50 transition-transform duration-300 md:translate-x-0 md:static md:h-screen",
+          "fixed inset-y-0 left-0 w-64 glass border-r border-slate-200/50 dark:border-slate-800/50 flex flex-col z-50 transition-transform duration-300 md:translate-x-0 md:static md:h-screen",
           isSidebarOpen ? "translate-x-0" : "-translate-x-full",
         )}
       >
-        <div className="h-16 hidden md:flex items-center justify-between px-6 border-b border-slate-200 dark:border-slate-800">
+        <div className="h-16 hidden md:flex items-center justify-between px-6 border-b border-slate-200/50 dark:border-slate-800/50">
           <div className="flex items-center">
             <Wrench className="w-6 h-6 text-indigo-600 mr-2" />
             <span className="text-lg font-semibold text-slate-900 dark:text-white">𝙱𝙹𝙴 ~ Tools</span>
@@ -229,16 +235,30 @@ export function Layout() {
         <div className="p-4 border-t border-slate-200 dark:border-slate-800">
           <div className="text-center">
             <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500 uppercase tracking-widest">
-              Version 1.0.3
+              Premium Toolbox
             </span>
           </div>
         </div>
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 flex flex-col min-w-0 overflow-hidden bg-slate-50 dark:bg-slate-950 relative z-10">
-        <div className="flex-1 overflow-y-auto p-4 md:p-8 relative">
-          <Outlet />
+      <main className="flex-1 flex flex-col min-w-0 overflow-hidden bg-transparent relative z-10">
+        <div className="flex-1 overflow-y-auto p-4 md:p-8 relative flex flex-col custom-scrollbar">
+          {location.pathname !== '/' && (
+            <div className="mb-6 flex-shrink-0 flex items-center">
+              <Link 
+                to="/" 
+                className="inline-flex items-center justify-center w-10 h-10 rounded-full glass shadow-sm border border-slate-200/50 dark:border-slate-800/50 text-slate-600 dark:text-slate-400 hover:bg-white/80 dark:hover:bg-slate-800/80 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all"
+                title="Back to Dashboard"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+              </Link>
+              <span className="ml-3 text-sm font-medium text-slate-500 dark:text-slate-400">Back to Dashboard</span>
+            </div>
+          )}
+          <div className="flex-1 min-h-0 flex flex-col">
+            <Outlet />
+          </div>
           <ToolManager />
         </div>
       </main>

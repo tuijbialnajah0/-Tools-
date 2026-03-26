@@ -598,10 +598,7 @@ export function PFPAnima() {
     <div className="max-w-7xl mx-auto">
       <div className="mb-8 flex items-center justify-between">
         <div>
-          <Link to="/" className="inline-flex items-center text-slate-500 hover:text-indigo-600 mb-2 transition-colors">
-            <ChevronLeft className="w-4 h-4 mr-1" />
-            Back to Dashboard
-          </Link>
+          
           <h1 className="text-3xl font-bold text-slate-900 dark:text-white flex items-center">
             <Sparkles className="w-8 h-8 mr-3 text-indigo-600" />
             PFP Anima

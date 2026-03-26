@@ -146,12 +146,7 @@ export function QrGenerator() {
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div className="flex items-center space-x-4">
-          <Link 
-            to="/" 
-            className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
-          >
-            <ChevronLeft className="w-6 h-6 text-slate-600 dark:text-slate-400" />
-          </Link>
+          
           <div>
             <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white flex items-center">
               QR Code Generator

@@ -25,6 +25,7 @@ export default function NotesCreate() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [notes, setNotes] = useState<string>('');
+  const [generatedTitle, setGeneratedTitle] = useState<string>('Study Notes');
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [ocrProgress, setOcrProgress] = useState<string>('');
   const [progressPercent, setProgressPercent] = useState<number>(0);
@@ -49,12 +50,12 @@ export default function NotesCreate() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const selectedFile = e.target.files[0];
-      if (selectedFile.type === 'application/pdf') {
+      if (selectedFile.type === 'application/pdf' || selectedFile.name.toLowerCase().endsWith('.html') || selectedFile.name.toLowerCase().endsWith('.htm')) {
         setFile(selectedFile);
         setNotes('');
         setErrorMsg('');
       } else {
-        alert('Please select a valid PDF file.');
+        alert('Please select a valid PDF or HTML file.');
       }
     }
   };
@@ -142,6 +143,30 @@ export default function NotesCreate() {
     }
   };
 
+  const extractTextFromHTML = async (htmlFile: File, onProgress: (percent: number) => void): Promise<string> => {
+    try {
+      onProgress(10);
+      const text = await htmlFile.text();
+      onProgress(50);
+      
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(text, 'text/html');
+      
+      // Remove script and style elements
+      const scripts = doc.querySelectorAll('script, style');
+      scripts.forEach(s => s.remove());
+      
+      onProgress(90);
+      const extractedText = doc.body.innerText || doc.body.textContent || '';
+      onProgress(100);
+      
+      return extractedText;
+    } catch (error: any) {
+      console.error("Error extracting text from HTML:", error);
+      throw new Error(error.message || "Failed to read HTML file.");
+    }
+  };
+
   const handleGenerateNotes = async () => {
     if (!file) return;
 
@@ -149,21 +174,29 @@ export default function NotesCreate() {
     setIsGenerating(false);
     setNotes('');
     setErrorMsg('');
-    setOcrProgress('Reading PDF document...');
+    setOcrProgress('Reading document...');
     setProgressPercent(0);
 
     try {
-      // Step 1: Extract text from PDF
-      let extractedText = await extractTextFromPDF(file, (p) => setProgressPercent(p));
+      let extractedText = '';
       
-      if (!extractedText || extractedText.trim().length === 0) {
-        setOcrProgress('Detecting scanned document. Starting OCR...');
-        setProgressPercent(0);
-        extractedText = await extractTextWithOCR(file, (p) => setProgressPercent(p));
+      if (file.name.toLowerCase().endsWith('.html') || file.name.toLowerCase().endsWith('.htm')) {
+        setOcrProgress('Extracting text from HTML...');
+        extractedText = await extractTextFromHTML(file, (p) => setProgressPercent(p));
+      } else {
+        // Step 1: Extract text from PDF
+        setOcrProgress('Extracting text from PDF...');
+        extractedText = await extractTextFromPDF(file, (p) => setProgressPercent(p));
+        
+        if (!extractedText || extractedText.trim().length === 0) {
+          setOcrProgress('Detecting scanned document. Starting OCR...');
+          setProgressPercent(0);
+          extractedText = await extractTextWithOCR(file, (p) => setProgressPercent(p));
+        }
       }
 
       if (!extractedText || extractedText.trim().length === 0) {
-        setErrorMsg("Could not extract any text from this PDF, even with OCR.");
+        setErrorMsg("Could not extract any text from this document, even with OCR.");
         setIsProcessing(false);
         return;
       }
@@ -180,11 +213,22 @@ export default function NotesCreate() {
       try {
         const generatedNotes = await generateNotes(extractedText, summaryLength, (currentText) => {
           setNotes(currentText);
+          // Try to extract title on the fly
+          const titleMatch = currentText.match(/^# (.*$)/m);
+          if (titleMatch && titleMatch[1]) {
+            setGeneratedTitle(titleMatch[1].trim());
+          }
         });
         if (!generatedNotes) {
            setErrorMsg("Could not generate notes. The text might be too short or complex.");
+        } else {
+          // Final title extraction
+          const titleMatch = generatedNotes.match(/^# (.*$)/m);
+          if (titleMatch && titleMatch[1]) {
+            setGeneratedTitle(titleMatch[1].trim());
+          }
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error("Error generating notes:", err);
         setErrorMsg("An error occurred while generating notes.");
       } finally {
@@ -192,8 +236,8 @@ export default function NotesCreate() {
       }
 
     } catch (error: any) {
-      console.error("PDF Processing Error:", error);
-      setErrorMsg(`An error occurred while processing the PDF: ${error.message}`);
+      console.error("Document Processing Error:", error);
+      setErrorMsg(`An error occurred while processing the document: ${error.message}`);
       setIsProcessing(false);
       setIsGenerating(false);
     }
@@ -206,11 +250,12 @@ export default function NotesCreate() {
   };
 
   const downloadNotes = (format: 'txt' | 'pdf' | 'docx') => {
-    const fileName = `${file?.name.replace('.pdf', '')}_Notes`;
+    const fileName = generatedTitle !== 'Study Notes' ? generatedTitle : (file?.name.replace(/\.(pdf|html|htm)$/i, '') || 'Notes');
+    const safeFileName = fileName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
     
     if (format === 'txt') {
       const blob = new Blob([notes], { type: 'text/plain;charset=utf-8' });
-      saveAs(blob, `${fileName}.txt`);
+      saveAs(blob, `𝙱𝙹𝙴_Clan_${safeFileName}.txt`);
     } else if (format === 'pdf') {
       if (!notesContainerRef.current) return;
       
@@ -292,7 +337,7 @@ export default function NotesCreate() {
       
       const opt = {
         margin: [10, 10, 10, 10] as [number, number, number, number],
-        filename: `${fileName}.pdf`,
+        filename: `𝙱𝙹𝙴_Clan_${safeFileName}.pdf`,
         image: { type: 'jpeg' as const, quality: 0.98 },
         html2canvas: { 
           scale: 2, 
@@ -319,7 +364,7 @@ export default function NotesCreate() {
         }]
       });
       Packer.toBlob(doc).then(blob => {
-        saveAs(blob, `${fileName}.docx`);
+        saveAs(blob, `𝙱𝙹𝙴_Clan_${safeFileName}.docx`);
       });
     }
     setShowDownloadMenu(false);
@@ -327,7 +372,7 @@ export default function NotesCreate() {
 
   const openCinematicView = () => {
     if (!notes || !file) return;
-    const html = generateCinematicHTML(file.name, notes);
+    const html = generateCinematicHTML(generatedTitle, notes);
     const blob = new Blob([html], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
     window.open(url, '_blank');
@@ -340,7 +385,7 @@ export default function NotesCreate() {
           Notes Create
         </h1>
         <p className="text-lg text-gray-500 max-w-2xl mx-auto">
-          Convert any PDF into smart, bullet-point notes instantly. 100% offline, fast, and secure.
+          Convert any PDF or HTML file into smart, bullet-point notes instantly. 100% offline, fast, and secure.
         </p>
       </div>
 
@@ -350,7 +395,7 @@ export default function NotesCreate() {
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
             <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
               <FileUp className="w-5 h-5 text-indigo-600" />
-              Upload PDF
+              Upload Document
             </h2>
             
             <div 
@@ -363,7 +408,7 @@ export default function NotesCreate() {
                 type="file" 
                 ref={fileInputRef} 
                 onChange={handleFileChange} 
-                accept=".pdf" 
+                accept=".pdf,.html,.htm" 
                 className="hidden" 
               />
               <Upload className={`w-10 h-10 mx-auto mb-3 ${file ? 'text-indigo-600' : 'text-gray-400'}`} />
@@ -374,8 +419,8 @@ export default function NotesCreate() {
                 </div>
               ) : (
                 <div>
-                  <p className="text-sm font-medium text-gray-900">Click to upload PDF</p>
-                  <p className="text-xs text-gray-500 mt-1">PDF files only (Max 50MB)</p>
+                  <p className="text-sm font-medium text-gray-900">Click to upload PDF or HTML</p>
+                  <p className="text-xs text-gray-500 mt-1">PDF or HTML files only (Max 50MB)</p>
                 </div>
               )}
             </div>
@@ -388,9 +433,9 @@ export default function NotesCreate() {
             </h2>
             
             <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Summary Length</label>
-                <div className="grid grid-cols-3 gap-2">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <label className="block text-sm font-medium text-gray-700">Summary Length</label>
+                <div className="grid grid-cols-3 gap-2 w-full sm:w-auto">
                   {(['short', 'medium', 'long'] as SummaryLength[]).map((len) => (
                     <button
                       key={len}
@@ -430,21 +475,21 @@ export default function NotesCreate() {
 
         {/* Right Column: Results */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col h-[600px]">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
             <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
               <FileText className="w-5 h-5 text-indigo-600" />
               Generated Notes
             </h2>
             
             {notes && !isGenerating && (
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   onClick={openCinematicView}
                   className="flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:from-indigo-700 hover:to-purple-700 transition-all shadow-sm hover:shadow-md group"
                   title="Open Cinematic Visual Mode"
                 >
                   <Sparkles className="w-4 h-4 animate-pulse group-hover:scale-110 transition-transform" />
-                  <span className="text-sm font-medium">Cinematic View</span>
+                  <span className="text-xs sm:text-sm font-medium">Cinematic View</span>
                 </button>
 
                 <button
@@ -516,7 +561,7 @@ export default function NotesCreate() {
                 </div>
               </div>
             ) : errorMsg ? (
-              <div className="h-full flex flex-col items-center justify-center text-red-500 space-y-2 text-center px-4">
+              <div className="h-full flex flex-col items-center justify-center text-red-500 space-y-4 text-center px-4">
                 <FileText className="w-12 h-12 opacity-50" />
                 <p className="text-sm font-medium">{errorMsg}</p>
               </div>
@@ -551,7 +596,7 @@ export default function NotesCreate() {
             ) : (
               <div className="h-full flex flex-col items-center justify-center text-gray-400 space-y-2">
                 <FileText className="w-12 h-12 opacity-20" />
-                <p className="text-sm">Upload a PDF and click Generate Notes to see results here.</p>
+                <p className="text-sm">Upload a PDF or HTML file and click Generate Notes to see results here.</p>
               </div>
             )}
           </div>

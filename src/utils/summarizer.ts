@@ -1,27 +1,44 @@
-import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
+import { GenerateContentResponse } from "@google/genai";
+import { getGenAI, getAllKeysCount } from "../services/geminiService";
 
 export async function generateNotes(
   text: string, 
   length: 'short' | 'medium' | 'long',
-  onProgress?: (text: string) => void
+  onProgress?: (text: string) => void,
+  mode: 'paste' | 'prompt' = 'paste'
 ): Promise<string> {
   if (!text || text.trim().length === 0) return "";
 
   try {
-    // Initialize Gemini API strictly using process.env.GEMINI_API_KEY as required
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      throw new Error("Gemini API key is missing.");
-    }
-    const ai = new GoogleGenAI({ apiKey });
+    let ai = getGenAI();
+    const totalKeys = getAllKeysCount();
+    let keyAttempts = 0;
     
-    let lengthInstruction = "Keep it concise and brief, focusing only on the most critical points.";
-    if (length === 'medium') lengthInstruction = "Provide a balanced summary with key details and important context.";
-    if (length === 'long') lengthInstruction = "Provide a comprehensive and detailed summary, capturing all nuances and important data points.";
+    let lengthInstruction = "CRITICAL: The summary MUST be extremely concise, aiming for an 80% reduction of the source text (roughly 20% of the original length). Focus ONLY on the absolute most critical points.";
+    if (length === 'medium') lengthInstruction = "CRITICAL: The summary should be moderately detailed, aiming for a 60% reduction of the source text (roughly 40% of the original length). Provide a balanced summary with key details and important context.";
+    if (length === 'long') lengthInstruction = "CRITICAL: The summary should be comprehensive, aiming for only a 30% reduction of the source text (roughly 70% of the original length). Capture all nuances, important data points, and detailed explanations.";
+
+    let contextInstruction = `I will provide you with raw text extracted from a document.
+Your task is to generate highly organized, beautifully designed, and structured notes using Markdown.`;
+    
+    let inputData = `Text to analyze:
+"""
+${text.substring(0, 30000)}
+"""`;
+
+    if (mode === 'prompt') {
+      contextInstruction = `The user has provided a topic or a prompt. 
+Your task is to FIRST generate comprehensive, high-quality information about this topic, and THEN structure it into beautifully designed notes using Markdown.`;
+      inputData = `Topic/Prompt: "${text}"`;
+      lengthInstruction = `CRITICAL: The generated content should be ${length} in length. 
+- If short: Provide a high-level overview with 3-4 key sections.
+- If medium: Provide a detailed guide with 5-7 key sections.
+- If long: Provide an exhaustive deep-dive with 8+ sections, tables, and detailed explanations.`;
+    }
 
     const prompt = `
-You are an expert, professional note-taker and document analyst. I will provide you with raw text extracted from a document.
-Your task is to generate highly organized, beautifully designed, and structured notes using Markdown.
+You are an expert, professional note-taker, researcher, and document analyst. 
+${contextInstruction}
 
 **CRITICAL: YOUR OUTPUT MUST BE PURE MARKDOWN ONLY. DO NOT INCLUDE ANY INTRODUCTORY TEXT, CONVERSATIONAL FILLER, OR "HERE ARE YOUR NOTES".**
 
@@ -34,7 +51,7 @@ Guidelines for Premium Document Design:
    - ALWAYS put a space after the # symbols (e.g., "## Section" NOT "##Section").
    - Add a relevant emoji to every heading.
 4. **Data Visualization (Tables)**: 
-   - **MANDATORY**: If the document contains any numerical data, comparisons, or lists with multiple attributes, you **MUST** use Markdown Tables.
+   - **MANDATORY**: If the topic contains any numerical data, comparisons, or lists with multiple attributes, you **MUST** use Markdown Tables.
    - **TABLE SYNTAX**: Ensure the header row and separator row are on separate lines.
      Example:
      | Header 1 | Header 2 |
@@ -52,41 +69,126 @@ Guidelines for Premium Document Design:
 7. ${lengthInstruction}
 8. Fix obvious OCR typos.
 
-Text to analyze:
-"""
-${text.substring(0, 60000)}
-"""
+${inputData}
     `;
 
-    if (onProgress) {
-      const responseStream = await ai.models.generateContentStream({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-      });
+    const modelsToTry = [
+      "gemini-3.1-pro-preview",
+      "gemini-3-flash-preview",
+      "gemini-2.5-pro-preview",
+      "gemini-2.5-flash-preview"
+    ];
 
+    if (onProgress) {
       let fullText = "";
-      for await (const chunk of responseStream) {
-        const c = chunk as GenerateContentResponse;
-        if (c.text) {
-          fullText += c.text;
-          onProgress(fullText);
+      let success = false;
+      let lastError: any = null;
+
+      for (const modelName of modelsToTry) {
+        // Reset key attempts for each model
+        keyAttempts = 0;
+        
+        while (keyAttempts < totalKeys) {
+          try {
+            const responseStream = await ai.models.generateContentStream({
+              model: modelName,
+              contents: prompt,
+            });
+
+            fullText = ""; // Reset for this attempt
+            for await (const chunk of responseStream) {
+              const c = chunk as GenerateContentResponse;
+              if (c.text) {
+                fullText += c.text;
+                onProgress(fullText);
+              }
+            }
+            success = true;
+            break; // Success, exit the key retry loop
+          } catch (err: any) {
+            console.warn(`Model ${modelName} failed with key attempt ${keyAttempts + 1}:`, err.message);
+            lastError = err;
+            
+            const errMsg = err.message || "";
+            const is403 = errMsg.includes('403') || errMsg.toLowerCase().includes('permission');
+            const isQuotaError = errMsg.includes('429') || errMsg.toLowerCase().includes('quota') || errMsg.toLowerCase().includes('resource_exhausted');
+
+            if ((is403 || isQuotaError) && keyAttempts < totalKeys - 1) {
+              console.log(`Rotating to next API key due to ${is403 ? 'permission' : 'quota'} error...`);
+              ai = getGenAI();
+              keyAttempts++;
+              continue; // Retry same model
+            }
+            
+            break; // Try next model
+          }
         }
+        
+        if (success) break;
+      }
+
+      if (!success) {
+        if (lastError?.message?.includes('429') || lastError?.message?.includes('403')) {
+          throw new Error("API_KEY_REQUIRED");
+        }
+        throw lastError || new Error("All models failed to generate content.");
       }
       return fullText;
     } else {
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-      });
+      let responseText = "";
+      let success = false;
+      let lastError: any = null;
 
-      if (!response.text) {
-        throw new Error("Empty response from Gemini.");
+      for (const modelName of modelsToTry) {
+        // Reset key attempts for each model
+        keyAttempts = 0;
+        
+        while (keyAttempts < totalKeys) {
+          try {
+            const response = await ai.models.generateContent({
+              model: modelName,
+              contents: prompt,
+            });
+
+            if (response.text) {
+              responseText = response.text;
+              success = true;
+              break; // Success, exit the key retry loop
+            }
+          } catch (err: any) {
+            console.warn(`Model ${modelName} failed with key attempt ${keyAttempts + 1}:`, err.message);
+            lastError = err;
+            
+            const errMsg = err.message || "";
+            const is403 = errMsg.includes('403') || errMsg.toLowerCase().includes('permission');
+            const isQuotaError = errMsg.includes('429') || errMsg.toLowerCase().includes('quota') || errMsg.toLowerCase().includes('resource_exhausted');
+
+            if ((is403 || isQuotaError) && keyAttempts < totalKeys - 1) {
+              console.log(`Rotating to next API key due to ${is403 ? 'permission' : 'quota'} error...`);
+              ai = getGenAI();
+              keyAttempts++;
+              continue; // Retry same model
+            }
+            
+            break; // Try next model
+          }
+        }
+        
+        if (success) break;
       }
 
-      return response.text;
+      if (!success || !responseText) {
+        if (lastError?.message?.includes('429') || lastError?.message?.includes('403')) {
+          throw new Error("API_KEY_REQUIRED");
+        }
+        throw lastError || new Error("All models failed to generate content or returned empty response.");
+      }
+
+      return responseText;
     }
   } catch (error: any) {
     console.error("Gemini API Error details:", error);
+    
     // Fallback to basic extraction if API fails
     const fallbackText = generateBasicNotes(text, length, error.message || "Unknown error");
     
@@ -111,9 +213,13 @@ function generateBasicNotes(text: string, length: 'short' | 'medium' | 'long', e
 
   const isHeading = (line: string) => (line.length < 50 && line === line.toUpperCase() && line.match(/[A-Z]/)) || (line.length < 60 && line.endsWith(':'));
 
+  const totalLines = lines.length;
+  let maxLines = Math.max(5, Math.floor(totalLines * 0.2)); // Short: 20% (80% reduction)
+  if (length === 'medium') maxLines = Math.max(10, Math.floor(totalLines * 0.4)); // Medium: 40% (60% reduction)
+  if (length === 'long') maxLines = Math.max(20, Math.floor(totalLines * 0.7)); // Long: 70% (30% reduction)
+
   const finalLines: string[] = [];
   let count = 0;
-  const maxLines = length === 'short' ? 10 : length === 'medium' ? 20 : 40;
 
   for (const line of lines) {
     if (count >= maxLines) break;

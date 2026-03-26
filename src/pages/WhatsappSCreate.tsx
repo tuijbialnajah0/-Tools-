@@ -320,9 +320,7 @@ export function WhatsappSCreate() {
     <div className="max-w-4xl mx-auto">
       <div className="mb-8 flex items-center justify-between">
         <div className="flex items-center space-x-4">
-          <Link to="/" className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors">
-            <ChevronLeft className="w-6 h-6 text-slate-600 dark:text-slate-400" />
-          </Link>
+          
           <div>
             <h1 className="text-3xl font-bold text-slate-900 dark:text-white flex items-center">
               Whatsapp-S-Create
@@ -380,22 +378,22 @@ export function WhatsappSCreate() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
           <div className="lg:col-span-2 space-y-6">
             <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-sm border border-slate-100 dark:border-slate-800">
-              <div className="flex items-center justify-between mb-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
                 <div>
                   <h3 className="text-xl font-bold text-slate-900 dark:text-white">Selected Images</h3>
                   <p className="text-sm text-slate-500">{stickers.length} images selected ({Math.ceil(stickers.length / STICKERS_PER_PACK)} packs)</p>
                 </div>
-                <div className="flex items-center space-x-3">
+                <div className="flex items-center gap-3">
                   <button 
                     onClick={() => setShowCropModal(true)}
-                    className="px-4 py-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-xl text-sm font-bold flex items-center hover:bg-indigo-100 transition-colors"
+                    className="flex-1 sm:flex-none px-4 py-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-xl text-sm font-bold flex items-center justify-center hover:bg-indigo-100 transition-colors"
                   >
                     <Crop className="w-4 h-4 mr-2" />
                     Auto Crop
                   </button>
                   <button 
                     onClick={() => { setStickers([]); setStep(1); }}
-                    className="px-4 py-2 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-xl text-sm font-bold hover:bg-red-100 transition-colors"
+                    className="flex-1 sm:flex-none px-4 py-2 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-xl text-sm font-bold hover:bg-red-100 transition-colors"
                   >
                     Clear
                   </button>

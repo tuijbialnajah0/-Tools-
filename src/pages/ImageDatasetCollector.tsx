@@ -32,7 +32,7 @@ export function ImageDatasetCollector() {
   
   const [lowQualityMode, setLowQualityMode] = useState(true);
   const [searchMode, setSearchMode] = useState<"Anime" | "General" | "Mixed">("Anime");
-  const [searchSource, setSearchSource] = useState<"All" | "DuckDuckGo" | "Reddit">("All");
+  const [searchSource, setSearchSource] = useState<"All" | "DuckDuckGo">("All");
   const [filterSource, setFilterSource] = useState<string>("All");
   const [filterOrientation, setFilterOrientation] = useState<string>("All");
   const [filterQuality, setFilterQuality] = useState<string>("Any");
@@ -343,27 +343,6 @@ export function ImageDatasetCollector() {
         );
       }
 
-      // Source: Reddit
-      if (searchSource === "All" || searchSource === "Reddit") {
-        searchPromises.push(
-          (async () => {
-            try {
-              const redditQuery = searchMode === "Anime" ? `${query} anime OR art` : query;
-              const res = await fetchWithTimeout(`/api/search-reddit?q=${encodeURIComponent(redditQuery)}`, { timeout: 8000 });
-              if (res.ok) {
-                const data = await res.json();
-                if (data && data.results) {
-                  return data.results;
-                }
-              }
-            } catch (e) {
-              console.warn("Reddit search failed", e);
-            }
-            return [];
-          })()
-        );
-      }
-
       setSearchProgress(50);
       const resultsArray = await Promise.all(searchPromises);
       
@@ -614,10 +593,7 @@ export function ImageDatasetCollector() {
   return (
     <div className="max-w-7xl mx-auto">
       <div className="mb-8 flex flex-col items-center justify-center text-center pt-8 pb-4">
-        <Link to="/" className="inline-flex items-center text-slate-500 hover:text-indigo-600 mb-6 transition-colors">
-          <ChevronLeft className="w-4 h-4 mr-1" />
-          Back to Dashboard
-        </Link>
+        
         <div className="flex items-center justify-center mb-4">
           <Layers className="w-12 h-12 mr-4 text-indigo-600" />
           <h1 className="text-4xl font-bold text-slate-900 dark:text-white">
@@ -652,7 +628,6 @@ export function ImageDatasetCollector() {
               >
                 <option value="All">All Sources</option>
                 <option value="DuckDuckGo">DuckDuckGo</option>
-                <option value="Reddit">Reddit</option>
               </select>
 
               <button

@@ -135,20 +135,15 @@ export function SmartCodeGenerator() {
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
       {/* Header */}
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div className="flex items-center space-x-4">
-          <Link 
-            to="/" 
-            className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
-          >
-            <ChevronLeft className="w-6 h-6 text-slate-600 dark:text-slate-400" />
-          </Link>
+          
           <div>
-            <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white flex items-center">
+            <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white flex items-center flex-wrap">
               Smart Code Generator
               <Code2 className="w-6 h-6 ml-2 text-indigo-500" />
             </h1>
-            <p className="text-slate-500 dark:text-slate-400">Detect language and export code to files instantly</p>
+            <p className="text-slate-500 dark:text-slate-400 text-sm sm:text-base">Detect language and export code to files instantly</p>
           </div>
         </div>
       </div>

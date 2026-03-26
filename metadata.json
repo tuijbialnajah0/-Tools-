@@ -1,5 +1,5 @@
 {
   "name": "𝙱𝙹𝙴 ~ Tools",
-  "description": "A comprehensive suite of AI-powered tools including Image Dataset Collector, Social Video Downloader, Background Remover, and more.",
-  "requestFramePermissions": []
+  "description": "A powerful suite of productivity and creative tools including AI generation, image processing, and document utilities.",
+  "requestFramePermissions": ["clipboard-read", "clipboard-write", "camera", "microphone"]
 }

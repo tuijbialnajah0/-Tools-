@@ -1,43 +1,41 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { CinematicNatureTheme } from './CinematicNatureTheme';
 import { EidTheme } from './EidTheme';
+import { ItachiTheme } from './ItachiTheme';
 
 export function ThemeEffects() {
   const [theme, setTheme] = useState<string | null>(localStorage.getItem('app-theme'));
 
   useEffect(() => {
-    const applyThemeClass = (currentTheme: string | null) => {
-      // Remove any existing theme classes
-      const classesToRemove: string[] = [];
-      document.documentElement.classList.forEach(cls => {
-        if (cls.startsWith('theme-')) {
-          classesToRemove.push(cls);
-        }
-      });
-      classesToRemove.forEach(cls => document.documentElement.classList.remove(cls));
-      
-      // Add the new theme class if it exists
-      if (currentTheme === 'pink-petals') {
-        document.documentElement.classList.add('theme-petals');
-      } else if (currentTheme === 'cinematic-nature') {
-        document.documentElement.classList.add('theme-cinematic-nature');
-      } else if (currentTheme === 'eid-ul-fitr') {
-        document.documentElement.classList.add('theme-eid');
-      }
-    };
-
     const handleThemeChange = () => {
-      const newTheme = localStorage.getItem('app-theme');
-      setTheme(newTheme);
-      applyThemeClass(newTheme);
+      setTheme(localStorage.getItem('app-theme'));
     };
-
-    // Apply on initial load
-    applyThemeClass(localStorage.getItem('app-theme'));
 
     window.addEventListener('theme-change', handleThemeChange);
     return () => window.removeEventListener('theme-change', handleThemeChange);
   }, []);
+
+  useEffect(() => {
+    // Remove any existing theme classes
+    const classesToRemove: string[] = [];
+    document.documentElement.classList.forEach(cls => {
+      if (cls.startsWith('theme-')) {
+        classesToRemove.push(cls);
+      }
+    });
+    classesToRemove.forEach(cls => document.documentElement.classList.remove(cls));
+    
+    // Add the new theme class if it exists
+    if (theme === 'pink-petals') {
+      document.documentElement.classList.add('theme-petals');
+    } else if (theme === 'cinematic-nature') {
+      document.documentElement.classList.add('theme-cinematic-nature');
+    } else if (theme === 'eid-ul-fitr') {
+      document.documentElement.classList.add('theme-eid');
+    } else if (theme === 'itachi-uchiha') {
+      document.documentElement.classList.add('theme-itachi');
+    }
+  }, [theme]);
 
   // Generate static petals with random CSS variables for animation
   const petals = useMemo(() => {
@@ -90,6 +88,10 @@ export function ThemeEffects() {
 
   if (theme === 'eid-ul-fitr') {
     return <EidTheme />;
+  }
+
+  if (theme === 'itachi-uchiha') {
+    return <ItachiTheme />;
   }
 
   if (theme !== 'pink-petals') return null;
