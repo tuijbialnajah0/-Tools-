@@ -189,25 +189,6 @@ export function Dashboard() {
 
         {/* Main Content Area */}
         <div className="space-y-24">
-          {/* Featured Section */}
-          {!searchQuery && selectedCategory === "All Tools" && (
-            <section className="space-y-10">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-amber-500 rounded-2xl flex items-center justify-center shadow-lg shadow-amber-500/20">
-                    <Star className="w-6 h-6 text-white fill-white" />
-                  </div>
-                  <h2 className="text-3xl font-black text-slate-900 dark:text-white">Featured Tools</h2>
-                </div>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                {popularTools.map((tool) => (
-                  <ToolCard key={tool.id} tool={tool} onExecute={handleExecute} />
-                ))}
-              </div>
-            </section>
-          )}
-
           {/* All Tools Grid */}
           <section className="space-y-10">
             <div className="flex items-center justify-between">

@@ -235,13 +235,6 @@ export function DocumentToText() {
                 <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Drop your document here</h2>
                 <p className="text-slate-500 dark:text-slate-400">Support for PDF, HTML, and Text files. 100% Offline.</p>
               </div>
-              <input 
-                type="file" 
-                ref={fileInputRef}
-                onChange={handleFileChange}
-                accept=".pdf,.html,.htm,.txt"
-                className="hidden" 
-              />
             </div>
           </motion.div>
         ) : (
@@ -337,6 +330,15 @@ export function DocumentToText() {
             </div>
           ))}
         </div>
+        
+        {/* Hidden File Input (Always in DOM) */}
+        <input 
+          type="file" 
+          ref={fileInputRef}
+          onChange={handleFileChange}
+          accept=".pdf,.html,.htm,.txt"
+          className="hidden" 
+        />
       </div>
     </div>
   );

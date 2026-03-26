@@ -11,25 +11,14 @@ import {
   Maximize2,
   RefreshCw,
   AlertCircle,
-  Settings,
-  FileCode,
-  FileJson,
-  File as FileIcon,
-  Loader2,
-  X
+  Settings
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { createWorker } from 'tesseract.js';
 import { GoogleGenAI } from "@google/genai";
-import * as pdfjs from 'pdfjs-dist';
-import mammoth from 'mammoth';
 
-// Set PDF.js worker
-pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
-
-export function DocumentToText() {
-  const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<string | null>(null);
+export function ImageToText() {
+  const [image, setImage] = useState<string | null>(null);
   const [text, setText] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -41,166 +30,100 @@ export function DocumentToText() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = e.target.files?.[0];
-    if (selectedFile) {
-      processFile(selectedFile);
+    const file = e.target.files?.[0];
+    if (file) {
+      const url = URL.createObjectURL(file);
+      setImage(url);
+      processImage(file);
     }
   };
 
-  const processFile = (selectedFile: File) => {
-    setFile(selectedFile);
-    setText("");
-    setError(null);
-    setProgress(0);
-    setStatus("");
-
-    if (selectedFile.type.startsWith('image/')) {
-      const reader = new FileReader();
-      reader.onloadend = () => setPreview(reader.result as string);
-      reader.readAsDataURL(selectedFile);
-    } else {
-      setPreview(null);
-    }
-  };
-
-  const extractText = async () => {
-    if (!file) return;
+  const processImage = async (file: File) => {
     setIsProcessing(true);
     setError(null);
     setProgress(0);
-    setStatus("Initializing...");
-
+    setText("");
+    
     try {
-      let extractedText = "";
-
-      if (file.type.startsWith('image/')) {
-        setStatus("Running OCR Engine...");
-        const worker = await createWorker('eng', 1, {
-          logger: m => {
-            if (m.status === 'recognizing text') {
-              setProgress(Math.round(m.progress * 100));
-              setStatus(`Analyzing Pixels: ${Math.round(m.progress * 100)}%`);
-            }
+      setStatus("Initializing AI Engine...");
+      const worker = await createWorker('eng', 1, {
+        logger: m => {
+          if (m.status === 'recognizing text') {
+            setProgress(Math.round(m.progress * 100));
+            setStatus(`Analyzing Pixels: ${Math.round(m.progress * 100)}%`);
           }
-        });
-        const { data: { text: rawText } } = await worker.recognize(file);
-        extractedText = rawText;
-        await worker.terminate();
-      } 
-      else if (file.type === 'application/pdf') {
-        setStatus("Reading PDF Structure...");
-        const arrayBuffer = await file.arrayBuffer();
-        const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
-        let fullText = "";
-        for (let i = 1; i <= pdf.numPages; i++) {
-          setProgress(Math.round((i / pdf.numPages) * 100));
-          setStatus(`Extracting Page ${i}/${pdf.numPages}...`);
-          const page = await pdf.getPage(i);
-          const content = await page.getTextContent();
-          const strings = content.items.map((item: any) => item.str);
-          fullText += strings.join(" ") + "\n";
         }
-        extractedText = fullText;
-      }
-      else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-        setStatus("Converting Word Doc...");
-        const arrayBuffer = await file.arrayBuffer();
-        const result = await mammoth.extractRawText({ arrayBuffer });
-        extractedText = result.value;
-        setProgress(100);
-      }
-      else if (file.type === 'text/html') {
-        setStatus("Parsing HTML Content...");
-        const rawHtml = await file.text();
-        const doc = new DOMParser().parseFromString(rawHtml, 'text/html');
-        extractedText = doc.body.innerText || doc.documentElement.innerText;
-        setProgress(100);
-      }
-      else {
-        setStatus("Reading Text File...");
-        extractedText = await file.text();
-        setProgress(100);
-      }
+      });
 
+      setStatus("Extracting Raw Text...");
+      const { data: { text: rawText } } = await worker.recognize(file);
+      
       if (smartFormat) {
-        setStatus("Optimizing Layout...");
-        const formatted = offlineSmartFormat(extractedText);
+        setStatus("AI Smart Formatting...");
+        const formatted = await applySmartFormatting(rawText);
         setText(formatted);
       } else {
-        setText(extractedText);
+        setText(rawText);
       }
-
+      
+      await worker.terminate();
       setStatus("Extraction Complete!");
     } catch (err: any) {
-      console.error("Extraction Error:", err);
-      setError("Failed to process document. Please try another file.");
+      console.error("OCR Error:", err);
+      setError("Failed to extract text. Please try a clearer image.");
     } finally {
       setIsProcessing(false);
     }
   };
 
-  // The "AI-Feel" Offline Formatting Algorithm
-  const offlineSmartFormat = (raw: string) => {
-    if (!raw.trim()) return "";
+  const basicFormatting = (rawText: string) => {
+    // 1. Remove OCR noise (random pipes, dots at start/end of lines)
+    let formatted = rawText.split('\n')
+      .map(line => line.trim())
+      .filter(line => line.length > 1) // Remove single char noise
+      .map(line => line.replace(/^[|!.:;]+|[|!.:;]+$/g, '').trim())
+      .join('\n');
 
-    // 1. Basic cleaning
-    let text = raw
-      .replace(/\r\n/g, '\n')
-      .replace(/[ \t]+/g, ' ') // Collapse horizontal whitespace
-      .replace(/\n{3,}/g, '\n\n'); // Max 2 newlines
-
-    // 2. OCR/PDF Artifact Removal
-    text = text
-      .replace(/^[|!.:;]+|[|!.:;]+$/gm, '') // Remove start/end noise
-      .replace(/(\w)-\n(\w)/g, '$1$2') // Fix hyphenated words at line breaks
-      .replace(/(\w)\n(\w)/g, (match, p1, p2) => {
-        // If it's a lowercase letter followed by a lowercase, it's likely a broken line
-        if (p1 === p1.toLowerCase() && p2 === p2.toLowerCase()) return `${p1} ${p2}`;
-        return match;
-      });
-
-    // 3. Smart Paragraphing & Header Detection
-    const lines = text.split('\n');
-    const processedLines = lines.map(line => {
-      const trimmed = line.trim();
-      if (!trimmed) return "";
-
-      // Header detection: Short lines, all caps, or ending without punctuation
-      if (trimmed.length < 60 && (trimmed === trimmed.toUpperCase() || !/[.!?]$/.test(trimmed))) {
-        return `\n[ ${trimmed} ]\n`;
+    // 2. Merge broken lines (lines that don't end with punctuation)
+    const lines = formatted.split('\n');
+    let merged = "";
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const nextLine = lines[i + 1];
+      
+      merged += line;
+      
+      // If line doesn't end with . ! ? and there is a next line, add space instead of newline
+      if (line && !/[.!?]$/.test(line) && nextLine && /^[a-z]/.test(nextLine)) {
+        merged += " ";
+      } else {
+        merged += "\n\n";
       }
+    }
 
-      // List detection: Starts with bullet-like chars
-      if (/^[-•*]\s/.test(trimmed)) {
-        return `  • ${trimmed.substring(2)}`;
-      }
-
-      return trimmed;
-    });
-
-    // 4. Reconstruct and fix casing
-    let final = processedLines.join('\n')
-      .replace(/\n{3,}/g, '\n\n')
+    // 3. Fix common OCR character swaps
+    formatted = merged
+      .replace(/\b0\b/g, 'O') // Zero to O in text context (simplified)
+      .replace(/\|/g, 'I') // Pipe to I
+      .replace(/\s+/g, ' ') // Collapse multiple spaces
       .trim();
 
-    // Sentence Case Fixer
-    final = final.replace(/(^\s*|[.!?]\s+)([a-z])/g, (m) => m.toUpperCase());
+    // 4. Sentence Case
+    formatted = formatted.replace(/(^\s*|[.!?]\s+)([a-z])/g, (m) => m.toUpperCase());
 
-    return final;
+    return formatted;
   };
 
-  const applyGeminiFormat = async () => {
-    if (!text.trim()) return;
-    setIsProcessing(true);
-    setStatus("AI Smart Formatting...");
+  const applySmartFormatting = async (rawText: string) => {
+    if (!rawText.trim()) return "";
     
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: `You are an expert at fixing OCR errors and formatting text. 
-        Below is text extracted from a document. 
-        Please fix any spelling errors, correct character swaps, 
+        Below is raw text extracted from an image. 
+        Please fix any spelling errors, correct character swaps (like 'Purcnasea' to 'Purchased', 'gooas' to 'goods', '¥' to '₹' if it looks like currency), 
         and format it into a clean, readable structure. 
         
         IMPORTANT: Do NOT use markdown formatting like bold (**), headers (#), or lists with asterisks (*). 
@@ -208,19 +131,22 @@ export function DocumentToText() {
         
         Keep the original meaning and data exactly as it is.
         
-        Text:
-        ${text}`,
+        Raw OCR Text:
+        ${rawText}`,
       });
       
-      let result = response.text || text;
-      result = result.replace(/[*#]/g, '').replace(/\n{3,}/g, '\n\n').trim();
-      setText(result);
-      setStatus("AI Formatting Complete!");
+      let result = response.text || basicFormatting(rawText);
+      
+      // Post-process to strip any accidental markdown characters
+      result = result
+        .replace(/[*#]/g, '') // Remove * and #
+        .replace(/\n{3,}/g, '\n\n') // Normalize multiple newlines
+        .trim();
+        
+      return result;
     } catch (error) {
       console.error("AI Formatting error:", error);
-      setError("AI Formatting failed. Using offline version.");
-    } finally {
-      setIsProcessing(false);
+      return basicFormatting(rawText);
     }
   };
 
@@ -231,8 +157,7 @@ export function DocumentToText() {
   };
 
   const clearAll = () => {
-    setFile(null);
-    setPreview(null);
+    setImage(null);
     setText("");
     setError(null);
     setProgress(0);
@@ -251,9 +176,9 @@ export function DocumentToText() {
               <div className="w-10 h-10 bg-indigo-500/10 rounded-xl flex items-center justify-center border border-indigo-500/20">
                 <FileText className="w-5 h-5 text-indigo-400" />
               </div>
-              <h1 className="text-2xl font-black tracking-tight">Document <span className="text-indigo-400">to Text</span></h1>
+              <h1 className="text-2xl font-black tracking-tight">Image <span className="text-indigo-400">to Text</span></h1>
             </div>
-            <p className="text-white/40 text-sm font-medium">Extract text from PDF, Images, Word & HTML.</p>
+            <p className="text-white/40 text-sm font-medium">Extract text offline, format with AI.</p>
           </div>
 
           <div className="flex items-center gap-2">
@@ -286,10 +211,10 @@ export function DocumentToText() {
           {/* Left: Upload & Preview */}
           <div className="flex flex-col gap-4">
             <div className="flex items-center justify-between px-2">
-              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white/20">Source Document</span>
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white/20">Source Image</span>
               <div className="flex items-center gap-4">
                 <label className="flex items-center gap-2 cursor-pointer group">
-                  <span className="text-[10px] font-bold text-white/20 group-hover:text-indigo-400 transition-colors">Offline Smart Format</span>
+                  <span className="text-[10px] font-bold text-white/20 group-hover:text-indigo-400 transition-colors">Smart Format</span>
                   <div className="relative w-8 h-4">
                     <input 
                       type="checkbox" 
@@ -306,53 +231,38 @@ export function DocumentToText() {
 
             <div 
               className={`relative flex-1 min-h-[250px] rounded-3xl border-2 border-dashed transition-all flex flex-col items-center justify-center overflow-hidden group ${
-                file ? "border-indigo-500/20 bg-indigo-500/5" : "border-white/10 hover:border-indigo-500/30 bg-white/[0.02]"
+                image ? "border-indigo-500/20 bg-indigo-500/5" : "border-white/10 hover:border-indigo-500/30 bg-white/[0.02]"
               }`}
               onDragOver={(e) => e.preventDefault()}
               onDrop={(e) => {
                 e.preventDefault();
-                const droppedFile = e.dataTransfer.files?.[0];
-                if (droppedFile) {
-                  processFile(droppedFile);
+                const file = e.dataTransfer.files?.[0];
+                if (file) {
+                  setImage(URL.createObjectURL(file));
+                  processImage(file);
                 }
               }}
             >
-              {file ? (
-                <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center">
-                  {preview ? (
-                    <img src={preview} alt="Preview" className="max-h-[200px] object-contain rounded-xl shadow-2xl mb-4" />
-                  ) : (
-                    <div className="w-20 h-20 bg-white/5 rounded-2xl flex items-center justify-center mb-4">
-                      <FileIcon className="w-10 h-10 text-indigo-400" />
-                    </div>
-                  )}
-                  <h3 className="text-sm font-bold truncate max-w-[200px]">{file.name}</h3>
-                  <p className="text-[10px] text-white/40 uppercase tracking-widest mt-1">{(file.size / 1024).toFixed(1)} KB</p>
-                  
-                  <div className="mt-6 flex flex-col gap-2 w-full max-w-[200px]">
+              {image ? (
+                <>
+                  <img src={image} alt="Preview" className="w-full h-full object-contain p-4" />
+                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-sm">
                     <button 
-                      onClick={extractText}
-                      disabled={isProcessing}
-                      className="w-full py-3 bg-white text-black rounded-xl font-black text-xs shadow-xl hover:bg-indigo-50 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="px-4 py-2 bg-white text-black rounded-xl font-bold text-xs flex items-center gap-2 hover:scale-105 transition-transform"
                     >
-                      {isProcessing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
-                      {isProcessing ? "Processing..." : "Extract Text"}
-                    </button>
-                    <button 
-                      onClick={clearAll}
-                      className="w-full py-2 bg-white/5 text-white/40 hover:text-red-400 rounded-lg text-[10px] font-bold transition-all"
-                    >
-                      Remove File
+                      <RefreshCw className="w-4 h-4" />
+                      Change Image
                     </button>
                   </div>
-                </div>
+                </>
               ) : (
                 <div className="text-center space-y-3 p-6">
                   <div className="w-16 h-16 bg-indigo-500/10 rounded-2xl flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
                     <Upload className="w-8 h-8 text-indigo-400" />
                   </div>
-                  <h3 className="text-lg font-bold">Drop document here</h3>
-                  <p className="text-white/30 text-[10px] max-w-[200px] mx-auto">PDF, DOCX, JPG, PNG, HTML, TXT. Offline Extraction.</p>
+                  <h3 className="text-lg font-bold">Drop image here</h3>
+                  <p className="text-white/30 text-[10px] max-w-[150px] mx-auto">Supports JPG, PNG, WEBP. AI Smart Formatting.</p>
                   <button 
                     onClick={() => fileInputRef.current?.click()}
                     className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold shadow-xl shadow-indigo-500/20 transition-all"
@@ -361,14 +271,16 @@ export function DocumentToText() {
                   </button>
                 </div>
               )}
-              <input 
-                type="file" 
-                ref={fileInputRef} 
-                onChange={handleFileChange} 
-                className="hidden" 
-                accept=".pdf,.docx,.jpg,.jpeg,.png,.html,.txt" 
-              />
             </div>
+
+            {/* Hidden File Input (Always in DOM) */}
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              onChange={handleFileChange} 
+              className="hidden" 
+              accept="image/*" 
+            />
 
             {/* Progress Bar */}
             <AnimatePresence>
@@ -407,23 +319,13 @@ export function DocumentToText() {
 
           {/* Right: Extracted Text */}
           <div className="flex flex-col gap-4">
-              <div className="flex items-center justify-between px-2">
-                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white/20">Extracted Text</span>
-                <div className="flex items-center gap-3">
-                  <button 
-                    onClick={applyGeminiFormat}
-                    disabled={isProcessing || !text}
-                    className="flex items-center gap-2 px-3 py-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 rounded-lg text-[10px] font-bold transition-all border border-indigo-500/20 disabled:opacity-50"
-                  >
-                    <Sparkles className="w-3 h-3" />
-                    AI Refine
-                  </button>
-                  <div className="flex items-center gap-2">
-                    <Zap className="w-3 h-3 text-indigo-400" />
-                    <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Smart Formatted</span>
-                  </div>
-                </div>
+            <div className="flex items-center justify-between px-2">
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white/20">Extracted Text</span>
+              <div className="flex items-center gap-2">
+                <Zap className="w-3 h-3 text-indigo-400" />
+                <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">AI Formatted</span>
               </div>
+            </div>
 
             <div className="flex-1 relative group min-h-[250px] lg:min-h-0">
               <textarea
@@ -481,7 +383,7 @@ export function DocumentToText() {
         <footer className="flex items-center justify-center gap-6 py-4 border-t border-white/5">
           <div className="flex items-center gap-2 text-white/10">
             <Zap className="w-3 h-3" />
-            <span className="text-[9px] font-bold uppercase tracking-widest">Multi-Engine Extraction</span>
+            <span className="text-[9px] font-bold uppercase tracking-widest">Tesseract.js Engine</span>
           </div>
           <div className="flex items-center gap-2 text-white/10">
             <Settings className="w-3 h-3" />

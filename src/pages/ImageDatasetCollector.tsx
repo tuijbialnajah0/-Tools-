@@ -32,7 +32,7 @@ export function ImageDatasetCollector() {
   
   const [lowQualityMode, setLowQualityMode] = useState(true);
   const [searchMode, setSearchMode] = useState<"Anime" | "General" | "Mixed">("Anime");
-  const [searchSource, setSearchSource] = useState<"All" | "DuckDuckGo">("All");
+  const [searchSource, setSearchSource] = useState<"All" | "Wallhaven" | "Booru">("All");
   const [filterSource, setFilterSource] = useState<string>("All");
   const [filterOrientation, setFilterOrientation] = useState<string>("All");
   const [filterQuality, setFilterQuality] = useState<string>("Any");
@@ -57,7 +57,7 @@ export function ImageDatasetCollector() {
   ];
 
   const getThumbnailUrl = (img: ImageData) => {
-    if (!lowQualityMode) return `/api/image-proxy?url=${encodeURIComponent(img.thumbnail)}`;
+    if (!lowQualityMode) return `https://wsrv.nl/?url=${encodeURIComponent(img.thumbnail)}&output=webp&q=90`;
     
     // Use a more resilient thumbnail proxy chain
     const encodedUrl = encodeURIComponent(img.thumbnail);
@@ -67,7 +67,6 @@ export function ImageDatasetCollector() {
   const fetchImageBlob = async (url: string): Promise<Blob | null> => {
     // Try multiple proxies for maximum resilience with different configurations
     const proxies = [
-      (u: string) => `/api/image-proxy?url=${encodeURIComponent(u)}`,
       (u: string) => `https://wsrv.nl/?url=${encodeURIComponent(u)}&output=webp&q=90`,
       (u: string) => `https://images.weserv.nl/?url=${encodeURIComponent(u.replace(/^https?:\/\//, ''))}&output=webp`,
       (u: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
@@ -97,6 +96,22 @@ export function ImageDatasetCollector() {
     }
     
     return null;
+  };
+
+  const fetchWithProxy = async (url: string, timeoutMs = 15000) => {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      let res = await fetch(url, { signal: controller.signal }).catch(() => null);
+      if (!res || !res.ok) {
+        res = await fetch(`https://corsproxy.io/?${encodeURIComponent(url)}`, { signal: controller.signal }).catch(() => null);
+      }
+      clearTimeout(id);
+      return res;
+    } catch (e) {
+      clearTimeout(id);
+      return null;
+    }
   };
 
   const fetchWithTimeout = async (resource: string, options: any = {}) => {
@@ -319,24 +334,62 @@ export function ImageDatasetCollector() {
       // Parallel Search Strategy - Optimized for Speed and Variety
       const searchPromises = [];
 
-      // Source: DuckDuckGo (General/Anime)
-      if (searchSource === "All" || searchSource === "DuckDuckGo") {
+      // Source: Wallhaven (General/Anime)
+      if (searchSource === "All" || searchSource === "Wallhaven") {
         searchPromises.push(
           (async () => {
             try {
-              const ddgQuery = searchMode === "Anime" ? `${query} anime` : query;
-              const res = await fetchWithTimeout(`/api/search-duckduckgo?q=${encodeURIComponent(ddgQuery)}&page=${currentPage}`, { timeout: 8000 });
-              if (res.ok) {
+              const purity = searchMode === "Anime" ? "100" : "110"; // 100=SFW, 110=SFW+Sketchy
+              const category = searchMode === "Anime" ? "010" : "111"; // 010=Anime, 111=All
+              const res = await fetchWithProxy(`https://wallhaven.cc/api/v1/search?q=${encodeURIComponent(query)}&purity=${purity}&categories=${category}&sorting=relevance&page=${currentPage}`);
+              if (res && res.ok) {
                 const data = await res.json();
-                if (data && data.results) {
-                  return data.results.map((img: any) => ({
-                    ...img,
+                if (data && data.data) {
+                  return data.data.map((img: any) => ({
+                    id: `wh-${img.id}`,
+                    url: img.path,
+                    thumbnail: img.thumbs.large || img.thumbs.original,
+                    source: 'Wallhaven',
+                    sourceUrl: img.url,
+                    width: img.resolution.split('x')[0],
+                    height: img.resolution.split('x')[1],
+                    title: `Wallhaven ${img.id}`,
                     type: searchMode === "Anime" ? 'Anime/Art' : 'General'
                   }));
                 }
               }
             } catch (e) {
-              console.warn("DuckDuckGo failed", e);
+              console.warn("Wallhaven failed", e);
+            }
+            return [];
+          })()
+        );
+      }
+
+      // Source: Safebooru (Anime only)
+      if ((searchSource === "All" || searchSource === "Booru") && searchMode === "Anime") {
+        searchPromises.push(
+          (async () => {
+            try {
+              const res = await fetchWithProxy(`https://safebooru.org/index.php?page=dapi&s=post&q=index&json=1&limit=40&pid=${currentPage - 1}&tags=${encodeURIComponent('*' + query.replace(/\s+/g, '_') + '*')}`);
+              if (res && res.ok) {
+                const data = await res.json();
+                if (Array.isArray(data)) {
+                  return data.map((img: any) => ({
+                    id: `sb-${img.id}`,
+                    url: `https://safebooru.org/images/${img.directory}/${img.image}`,
+                    thumbnail: `https://safebooru.org/thumbnails/${img.directory}/thumbnail_${img.image.replace(/\.[^/.]+$/, "")}.jpg`,
+                    source: 'Safebooru',
+                    sourceUrl: `https://safebooru.org/index.php?page=post&s=view&id=${img.id}`,
+                    width: img.width,
+                    height: img.height,
+                    title: `Safebooru ${img.id}`,
+                    type: 'Anime/Art'
+                  }));
+                }
+              }
+            } catch (e) {
+              console.warn("Safebooru failed", e);
             }
             return [];
           })()
@@ -627,7 +680,8 @@ export function ImageDatasetCollector() {
                 style={{ backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 1rem center', backgroundSize: '1em', paddingRight: '2.5rem' }}
               >
                 <option value="All">All Sources</option>
-                <option value="DuckDuckGo">DuckDuckGo</option>
+                <option value="Wallhaven">Wallhaven</option>
+                <option value="Booru">Booru</option>
               </select>
 
               <button
@@ -893,7 +947,7 @@ export function ImageDatasetCollector() {
                       const target = e.target as HTMLImageElement;
                       if (!target.dataset.triedProxy) {
                         target.dataset.triedProxy = 'true';
-                        target.src = `/api/image-proxy?url=${encodeURIComponent(img.thumbnail)}`;
+                        target.src = `https://wsrv.nl/?url=${encodeURIComponent(img.thumbnail)}&output=webp&q=70`;
                       } else {
                         // Don't show random picsum images, just show a broken image placeholder
                         target.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjY2JkNWUxIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHJlY3QgeD0iMyIgeT0iMyIgd2lkdGg9IjE4IiBoZWlnaHQ9IjE4IiByeD0iMiIgcnk9IjIiPjwvcmVjdD48Y2lyY2xlIGN4PSI4LjUiIGN5PSI4LjUiIHI9IjEuNSI+PC9jaXJjbGU+PHBhdGggZD0iTTIxIDE1bC01LTVMNSAyMSI+PC9wYXRoPjwvc3ZnPg==';
