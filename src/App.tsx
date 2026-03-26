@@ -4,7 +4,7 @@
  */
 
 import React from "react";
-import { HashRouter, Routes, Route, Navigate, Link } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, Link } from "react-router-dom";
 import { ToolProvider } from "./context/ToolContext";
 import { Layout } from "./components/Layout";
 import { Dashboard } from "./pages/Dashboard";
@@ -26,7 +26,7 @@ import { DocumentToText } from "./pages/DocumentToText";
 export default function App() {
   return (
     <ToolProvider>
-      <HashRouter>
+      <BrowserRouter>
         <Routes>
           <Route path="/" element={<Layout />}>
             <Route index element={<Dashboard />} />
@@ -61,7 +61,7 @@ export default function App() {
             />
           </Route>
         </Routes>
-      </HashRouter>
+      </BrowserRouter>
     </ToolProvider>
   );
 }
