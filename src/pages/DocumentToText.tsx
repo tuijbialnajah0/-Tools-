@@ -74,9 +74,30 @@ export function DocumentToText() {
       for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);
         const textContent = await page.getTextContent();
-        const pageText = textContent.items
-          .map((item: any) => item.str)
-          .join(" ");
+        
+        // Group items by their vertical position (y-coordinate)
+        const items = textContent.items as any[];
+        const lines: { [key: number]: any[] } = {};
+        
+        items.forEach(item => {
+          const y = Math.round(item.transform[5]);
+          if (!lines[y]) lines[y] = [];
+          lines[y].push(item);
+        });
+
+        // Sort lines by y-coordinate (descending for top-to-bottom)
+        const sortedY = Object.keys(lines)
+          .map(Number)
+          .sort((a, b) => b - a);
+
+        const pageText = sortedY.map(y => {
+          // Sort items in each line by x-coordinate (ascending)
+          return lines[y]
+            .sort((a, b) => a.transform[4] - b.transform[4])
+            .map(item => item.str)
+            .join(" ");
+        }).join("\n");
+
         fullText += pageText + "\n\n";
       }
 
@@ -106,29 +127,61 @@ export function DocumentToText() {
   const smartFormat = (text: string) => {
     if (!text) return "";
     
-    let formatted = text
+    // Step 1: Basic normalization
+    let lines = text
       .replace(/\r\n/g, "\n")
-      .replace(/\t/g, " ")
-      // Remove excessive whitespace
-      .replace(/ +/g, " ")
-      .replace(/\n{3,}/g, "\n\n")
-      .trim();
+      .replace(/\t/g, "  ")
+      .split("\n")
+      .map(line => line.trim())
+      .filter(line => line.length > 0);
 
-    // Heuristic: Capitalize sentences
-    formatted = formatted.replace(/(^|[.!?]\s+)([a-z])/g, (m, p1, p2) => p1 + p2.toUpperCase());
+    const processedLines: string[] = [];
+    
+    // Step 2: Process lines with heuristic patterns
+    lines.forEach((line, index) => {
+      let currentLine = line;
 
-    // Heuristic: Detect potential headers (short lines with no ending punctuation)
-    const lines = formatted.split("\n");
-    const processedLines = lines.map(line => {
-      const trimmed = line.trim();
-      if (trimmed.length > 0 && trimmed.length < 60 && !/[.!?]$/.test(trimmed)) {
-        // Looks like a header, let's make it stand out
-        return `\n[ ${trimmed.toUpperCase()} ]\n`;
+      // Pattern: Date detection (DD/MM/YYYY or similar)
+      const datePattern = /\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}\b/;
+      const hasDate = datePattern.test(currentLine);
+
+      // Pattern: Time detection (HH:MM AM/PM)
+      const timePattern = /\b\d{1,2}:\d{2}\s*(?:AM|PM|NOON|MIDNIGHT)\b/i;
+      const hasTime = timePattern.test(currentLine);
+
+      // Pattern: Header detection (All caps or short lines without punctuation)
+      const isAllCaps = currentLine === currentLine.toUpperCase() && /[A-Z]/.test(currentLine);
+      const isShort = currentLine.length < 50;
+      const noPunctuation = !/[.!?]$/.test(currentLine);
+      const isHeader = (isAllCaps && isShort) || (isShort && noPunctuation && index === 0);
+
+      // Pattern: List/Shift detection
+      const isShift = /\b(?:1st|2nd|3rd|Shift|Batch)\b/i.test(currentLine);
+
+      if (isHeader) {
+        processedLines.push(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+        processedLines.push(`[ ${currentLine.toUpperCase()} ]`);
+        processedLines.push(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
+      } else if (hasDate) {
+        // If it has a date, it's likely a new entry/row
+        processedLines.push(`\n📅 ${currentLine}`);
+      } else if (isShift || hasTime) {
+        // If it has shift or time, indent it slightly or mark it
+        processedLines.push(`  • ${currentLine}`);
+      } else {
+        // Regular text, capitalize if it looks like a sentence
+        if (/^[a-z]/.test(currentLine)) {
+          currentLine = currentLine.charAt(0).toUpperCase() + currentLine.slice(1);
+        }
+        processedLines.push(currentLine);
       }
-      return line;
     });
 
-    return processedLines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+    // Step 3: Final cleanup and joining
+    return processedLines
+      .join("\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
   };
 
   const displayedText = formatMode === "smart" ? smartFormat(extractedText) : extractedText;
