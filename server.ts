@@ -1,10 +1,16 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
-import app from "./api/index.js";
+import app from "./api/index";
 
 async function startServer() {
   const PORT = 3000;
+  console.log(`Starting server in ${process.env.NODE_ENV || 'development'} mode...`);
+
+  // API routes FIRST
+  app.get("/api/health", (req, res) => {
+    res.json({ status: "ok", mode: process.env.NODE_ENV });
+  });
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
@@ -26,4 +32,7 @@ async function startServer() {
   });
 }
 
-startServer();
+startServer().catch(err => {
+  console.error("Failed to start server:", err);
+  process.exit(1);
+});

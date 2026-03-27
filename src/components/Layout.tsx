@@ -121,7 +121,7 @@ export function Layout() {
       {/* Sidebar Overlay */}
       {isSidebarOpen && (
         <div
-          className="fixed inset-0 bg-slate-900/50 z-40 md:hidden backdrop-blur-sm"
+          className="fixed inset-0 bg-slate-900/50 z-40 md:hidden backdrop-blur-md"
           onClick={closeSidebar}
         />
       )}

@@ -5,6 +5,7 @@ import { Readable } from "stream";
 const app = express();
 
 app.use(cors());
+app.use(express.json());
 
 // Enable SharedArrayBuffer for AI models
 app.use((req, res, next) => {
@@ -139,6 +140,55 @@ app.get("/api/proxy-booru", async (req, res) => {
   } catch (error: any) {
     console.error("Proxy booru error:", error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Proxy route for generic API requests to bypass CORS
+app.post("/api/proxy-request", async (req, res) => {
+  try {
+    const { url, method, headers, body } = req.body;
+
+    if (!url) {
+      return res.status(400).json({ error: "URL is required" });
+    }
+
+    const startTime = performance.now();
+    const response = await fetch(url, {
+      method: method || "GET",
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        ...headers
+      },
+      body: body ? (typeof body === 'string' ? body : JSON.stringify(body)) : undefined
+    });
+    const endTime = performance.now();
+
+    const contentType = response.headers.get("content-type") || "";
+    let data;
+
+    if (contentType.includes("application/json")) {
+      data = await response.json();
+    } else {
+      data = await response.text();
+    }
+
+    // Convert headers to a plain object
+    const responseHeaders: Record<string, string> = {};
+    response.headers.forEach((value, key) => {
+      responseHeaders[key] = value;
+    });
+
+    res.json({
+      status: response.status,
+      statusText: response.statusText,
+      headers: responseHeaders,
+      data,
+      time: Math.round(endTime - startTime)
+    });
+
+  } catch (error: any) {
+    console.error("API Proxy error:", error);
+    res.status(500).json({ error: error.message || "Failed to send request" });
   }
 });
 

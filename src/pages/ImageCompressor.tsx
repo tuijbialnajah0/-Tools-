@@ -330,7 +330,7 @@ export default function ImageCompressor() {
                 )}
 
                 {isProcessing && (
-                  <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm flex flex-col items-center justify-center p-8">
+                  <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md flex flex-col items-center justify-center p-8">
                     <Loader2 className="w-8 h-8 text-orange-500 animate-spin mb-4" />
                     <p className="text-white text-center font-bold text-sm">Processing...</p>
                   </div>

@@ -960,11 +960,11 @@ export function ImageDatasetCollector() {
                   
                   {/* Source Tag */}
                   <div className="absolute bottom-2 left-2 flex gap-1">
-                    <span className="px-1.5 py-0.5 bg-black/60 text-white text-[8px] font-bold rounded backdrop-blur-sm">
+                    <span className="px-1.5 py-0.5 bg-black/60 text-white text-[8px] font-bold rounded backdrop-blur-md">
                       {img.source}
                     </span>
                     {(img as any).type && (
-                      <span className={`px-1.5 py-0.5 text-white text-[8px] font-bold rounded backdrop-blur-sm ${
+                      <span className={`px-1.5 py-0.5 text-white text-[8px] font-bold rounded backdrop-blur-md ${
                         (img as any).type === 'Cosplay' ? 'bg-pink-600/80' : 
                         (img as any).type === 'Anime/Art' ? 'bg-indigo-600/80' : 'bg-slate-600/80'
                       }`}>
@@ -1026,7 +1026,7 @@ export function ImageDatasetCollector() {
 
       {/* Waifu Warning Modal */}
       {showWaifuWarning && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-md p-4 animate-in fade-in duration-200">
           <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 max-w-md w-full shadow-2xl border border-pink-200 dark:border-pink-900/50 transform animate-in zoom-in-95 duration-200">
             <div className="text-center">
               <div className="w-20 h-20 bg-pink-100 dark:bg-pink-900/30 rounded-full flex items-center justify-center mx-auto mb-6">

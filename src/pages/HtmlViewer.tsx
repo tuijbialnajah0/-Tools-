@@ -105,7 +105,7 @@ export function HtmlViewer() {
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
-          className={`space-y-4 ${isFullscreen ? 'fixed inset-0 z-[100] bg-white dark:bg-slate-900 p-4' : ''}`}
+          className={`space-y-4 ${isFullscreen ? 'fixed inset-0 z-[100] bg-white/90 dark:bg-slate-900/90 backdrop-blur-md p-4' : ''}`}
         >
           {/* Toolbar */}
           <div className="flex items-center justify-between bg-slate-900 text-white p-4 rounded-2xl shadow-lg">

@@ -740,7 +740,7 @@ export function PFPAnima() {
                   <div className="flex gap-2">
                     <button 
                       onClick={() => downloadSingleImage(img)}
-                      className="flex-1 py-1.5 bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center"
+                      className="flex-1 py-1.5 bg-white/20 hover:bg-white/30 backdrop-blur-md text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center"
                     >
                       <Download className="w-3 h-3 mr-1" /> Save
                     </button>
@@ -748,7 +748,7 @@ export function PFPAnima() {
                       href={img.sourceUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="px-2 py-1.5 bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white rounded-lg transition-colors flex items-center justify-center"
+                      className="px-2 py-1.5 bg-white/20 hover:bg-white/30 backdrop-blur-md text-white rounded-lg transition-colors flex items-center justify-center"
                       title="Open Source"
                     >
                       <ExternalLink className="w-3 h-3" />

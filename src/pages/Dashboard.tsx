@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { 
   Play,
    
@@ -6,6 +6,7 @@ import {
   Image, 
   QrCode, 
   Code, 
+  Globe,
   FileText, 
   FileCode,
   MessageSquare, 
@@ -14,12 +15,14 @@ import {
   Video, 
   Download,
   Zap,
+  Waves,
   Sparkles,
   Search,
   Filter,
   ArrowRight,
   Star,
-  MonitorPlay
+  MonitorPlay,
+  Palette
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
@@ -30,36 +33,65 @@ type Tool = {
   description: string;
   category: string | string[];
   icon: React.ElementType;
-  isNew?: boolean;
   isPopular?: boolean;
+  inDevelopment?: boolean;
 };
 
 export function Dashboard() {
   const navigate = useNavigate();
   const [selectedCategory, setSelectedCategory] = useState<string>("All Tools");
   const [searchQuery, setSearchQuery] = useState("");
+  const [favorites, setFavorites] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem("favorite-tools");
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem("favorite-tools", JSON.stringify(favorites));
+  }, [favorites]);
+
+  const toggleFavorite = (toolId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setFavorites(prev => 
+      prev.includes(toolId) 
+        ? prev.filter(id => id !== toolId)
+        : [...prev, toolId]
+    );
+  };
 
   const tools: Tool[] = [
-    { id: 'background-remover', name: 'BG Remover', description: 'AI background removal.', category: ['Image & Photo', 'AI Tools'], icon: Image, isPopular: true },
+    { id: 'background-remover', name: 'BG Remover', description: 'AI background removal.', category: ['Image & Photo', 'AI Tools'], icon: Image, isPopular: true, inDevelopment: true },
     { id: 'qr-code-generator', name: 'QR Generator', description: 'Create custom QR codes.', category: 'Utility', icon: QrCode },
     { id: 'smart-code-generator', name: 'Smart Code', description: 'Extract code from text.', category: 'Utility', icon: Code, isPopular: true },
-    { id: 'code-base', name: 'Code Base', description: 'AI code builder & preview.', category: ['AI Tools'], icon: FileCode, isNew: true, isPopular: true },
+    { id: 'code-base', name: 'Code Base', description: 'AI code builder & preview.', category: ['AI Tools'], icon: FileCode, isPopular: true, inDevelopment: true },
     { id: 'pdf-converter', name: 'PDF Converter', description: 'PDF conversion tools.', category: 'Utility', icon: FileText },
     { id: 'whatsapp-s-create', name: 'WA Sticker', description: 'Create WhatsApp stickers.', category: 'Social', icon: MessageSquare },
     { id: 'image-dataset-collector', name: 'Image Data-Set Collector', description: 'Collect images for AI.', category: 'Utility', icon: Layers },
-    { id: 'wa-s-generator', name: 'WA Generator', description: 'AI sticker generation.', category: 'Social', icon: Smile, isNew: true },
-    { id: 'pfp-anima', name: 'PFP Anima', description: 'Animate profile pictures.', category: 'Image & Photo', icon: Zap, isNew: true },
-    { id: 'image-colourizer', name: 'Image colorizer', description: 'Colorize B&W photos.', category: ['Image & Photo', 'AI Tools'], icon: Image, isNew: true },
+    { id: 'wa-s-generator', name: 'WA Generator', description: 'AI sticker generation.', category: 'Social', icon: Smile },
+    { id: 'pfp-anima', name: 'PFP Anima', description: 'Animate profile pictures.', category: 'Image & Photo', icon: Zap },
+    { id: 'image-colourizer', name: 'Image colorizer', description: 'Colorize B&W photos.', category: ['Image & Photo', 'AI Tools'], icon: Image, inDevelopment: true },
     { id: 'notes-create', name: 'Notes Create', description: 'PDF/HTML to smart notes.', category: 'AI Tools', icon: FileText, isPopular: true },
-    { id: 'text-to-cinematic-notes', name: 'Text To Notes', description: 'Text to study experience.', category: 'AI Tools', icon: Sparkles, isNew: true },
-    { id: 'html-viewer', name: 'HTML Viewer', description: 'Sandbox HTML preview.', category: 'Utility', icon: FileCode, isNew: true },
-    { id: 'text-to-image', name: 'Text to Image', description: 'AI image generation.', category: 'AI Tools', icon: Image, isNew: true },
-    { id: 'image-compressor', name: 'Image compressor', description: 'Browser-based compression.', category: 'Utility', icon: Image, isNew: true },
-    { id: 'bulk-image-compressor', name: 'Bulk Image Compressor', description: 'Batch image compression.', category: 'Utility', icon: Layers, isNew: true },
-    { id: 'code-formatter', name: 'Code Formatter', description: 'Clean & format code.', category: 'Utility', icon: Code, isNew: true },
-    { id: 'image-to-text', name: 'Image to Text', description: 'Extract text from images.', category: ['Image & Photo', 'Utility'], icon: FileText, isNew: true },
-    { id: 'document-to-text', name: 'Document to Text', description: 'Extract text from docs.', category: 'Utility', icon: FileText, isNew: true },
-    { id: 'notes-viewer', name: 'Notes Viewer', description: 'Manage your smart notes.', category: 'Utility', icon: MonitorPlay, isNew: true },
+    { id: 'text-to-cinematic-notes', name: 'Text To Notes', description: 'Text to study experience.', category: 'AI Tools', icon: Sparkles },
+    { id: 'html-viewer', name: 'HTML Viewer', description: 'Sandbox HTML preview.', category: 'Utility', icon: FileCode },
+    { id: 'text-to-image', name: 'Text to Image', description: 'AI image generation.', category: 'AI Tools', icon: Image, inDevelopment: true },
+    { id: 'image-compressor', name: 'Image compressor', description: 'Browser-based compression.', category: 'Utility', icon: Image },
+    { id: 'bulk-image-compressor', name: 'Bulk Image Compressor', description: 'Batch image compression.', category: 'Utility', icon: Layers },
+    { id: 'code-formatter', name: 'Code Formatter', description: 'Clean & format code.', category: 'Utility', icon: Code },
+    { id: 'image-to-text', name: 'Image to Text', description: 'Extract text from images.', category: ['Image & Photo', 'Utility'], icon: FileText },
+    { id: 'document-to-text', name: 'Document to Text', description: 'Extract text from docs.', category: 'Utility', icon: FileText },
+    { id: 'image-formatter', name: 'Image Formatter', description: 'Convert image formats offline.', category: 'Image & Photo', icon: Image },
+    { id: 'word-counter', name: 'Word Counter', description: 'Count words, chars, and paragraphs.', category: 'Utility', icon: FileText },
+    { id: 'favicon-generator', name: 'Favicon', description: 'Generate favicon sets from images.', category: 'Utility', icon: Image },
+    { id: 'video-to-audio', name: 'Video to Audio', description: 'Extract audio from video files.', category: 'Utility', icon: Video },
+    { id: 'color-palette', name: 'Color Palette', description: 'Extract colors from images or generate random palettes.', category: 'Design', icon: Palette },
+    { id: 'notes-viewer', name: 'Notes Viewer', description: 'Manage your smart notes.', category: 'Utility', icon: MonitorPlay },
+    { id: 'emoji-art', name: 'Emoji Art', description: 'Convert photos into emoji pixel art.', category: ['Image & Photo', 'Social'], icon: Smile },
+    { id: 'api-tester', name: 'API Tester', description: 'Test REST APIs with proxy support.', category: 'Utility', icon: Globe, inDevelopment: true },
+    { id: 'audio-visualiser', name: 'Audio Visualiser', description: 'Convert MP3 to animated sound wave videos.', category: ['Social', 'Utility'], icon: MonitorPlay, inDevelopment: true },
   ];
 
   const handleExecute = (tool: Tool) => {
@@ -86,7 +118,15 @@ export function Dashboard() {
       "Code Formatter": "/code-formatter",
       "Image to Text": "/image-to-text",
       "Document to Text": "/document-to-text",
+      "Image Formatter": "/image-formatter",
+      "Word Counter": "/word-counter",
+      "Favicon": "/favicon-generator",
+      "Video to Audio": "/video-to-audio",
+      "Color Palette": "/color-palette",
       "Notes Viewer": "/notes-viewer",
+      "Emoji Art": "/emoji-art",
+      "API Tester": "/api-tester",
+      "Audio Visualiser": "/audio-visualiser",
     };
 
     if (explicitMappings[toolName]) {
@@ -101,21 +141,34 @@ export function Dashboard() {
   };
 
   const categories = useMemo(() => {
-    const allCategories = tools.flatMap(t => Array.isArray(t.category) ? t.category : [t.category]);
-    return ["All Tools", ...Array.from(new Set(allCategories)).filter(Boolean)];
+    const allCategories = tools
+      .filter(t => !t.inDevelopment)
+      .flatMap(t => Array.isArray(t.category) ? t.category : [t.category]);
+    return ["All Tools", "Favorites", "In Development", ...Array.from(new Set(allCategories)).filter(Boolean)];
   }, [tools]);
   
   const filteredTools = useMemo(() => {
     return tools.filter(tool => {
       const toolCategories = Array.isArray(tool.category) ? tool.category : [tool.category];
-      const matchesCategory = selectedCategory === "All Tools" || toolCategories.includes(selectedCategory);
+      
+      let matchesCategory = false;
+      if (selectedCategory === "In Development") {
+        matchesCategory = !!tool.inDevelopment;
+      } else if (selectedCategory === "All Tools") {
+        matchesCategory = !tool.inDevelopment;
+      } else if (selectedCategory === "Favorites") {
+        matchesCategory = favorites.includes(tool.id) && !tool.inDevelopment;
+      } else {
+        matchesCategory = toolCategories.includes(selectedCategory) && !tool.inDevelopment;
+      }
+
       const matchesSearch = tool.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
                            tool.description.toLowerCase().includes(searchQuery.toLowerCase());
       return matchesCategory && matchesSearch;
     });
-  }, [selectedCategory, searchQuery, tools]);
+  }, [selectedCategory, searchQuery, tools, favorites]);
 
-  const popularTools = useMemo(() => tools.filter(t => t.isPopular), [tools]);
+  const popularTools = useMemo(() => tools.filter(t => t.isPopular && !t.inDevelopment), [tools]);
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 selection:bg-indigo-100 dark:selection:bg-indigo-900/30 overflow-x-hidden">
@@ -134,12 +187,12 @@ export function Dashboard() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
-              className="text-5xl sm:text-7xl font-black text-slate-900 dark:text-white tracking-tight leading-[0.9]"
+              className="text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-black text-slate-900 dark:text-white tracking-tight leading-[0.9] whitespace-nowrap"
             >
-              Ultimate <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600">Toolbox</span>
+              Beyond <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600">Journey's End</span>
             </motion.h1>
             <p className="text-slate-500 dark:text-slate-400 text-lg sm:text-xl font-medium max-w-lg">
-              A curated collection of {tools.length} high-performance AI tools designed for modern creators.
+              In total {tools.filter(t => !t.inDevelopment).length} tools, still half baked.
             </p>
           </div>
 
@@ -205,6 +258,8 @@ export function Dashboard() {
                       key={tool.id} 
                       tool={tool} 
                       onExecute={handleExecute} 
+                      isFavorite={favorites.includes(tool.id)}
+                      onToggleFavorite={(e) => toggleFavorite(tool.id, e)}
                     />
                   ))}
                 </div>
@@ -231,10 +286,14 @@ export function Dashboard() {
 
 function ToolCard({ 
   tool, 
-  onExecute
+  onExecute,
+  isFavorite,
+  onToggleFavorite
 }: { 
   tool: Tool; 
   onExecute: (tool: Tool) => void;
+  isFavorite: boolean;
+  onToggleFavorite: (e: React.MouseEvent) => void;
 }) {
   const Icon = tool.icon;
   const cleanDesc = tool.description.replace(/\[STATUS:(working|development)\]/g, '').trim();
@@ -248,6 +307,19 @@ function ToolCard({
       whileHover={{ y: -8, scale: 1.02 }}
       className="group relative bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 p-5 sm:p-6 flex items-center gap-6 shadow-sm hover:shadow-2xl hover:border-indigo-500/50 transition-all duration-500 min-h-[140px] sm:min-h-[160px] overflow-hidden"
     >
+      {/* Favorite Button */}
+      <button
+        onClick={onToggleFavorite}
+        className={`absolute top-4 right-4 z-20 p-2 rounded-full transition-all duration-300 cursor-pointer ${
+          isFavorite 
+            ? 'text-amber-400 bg-amber-50 dark:bg-amber-400/10' 
+            : 'text-slate-300 dark:text-slate-600 hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-400/10'
+        }`}
+        title={isFavorite ? "Remove from favorites" : "Add to favorites"}
+      >
+        <Star className={`w-5 h-5 ${isFavorite ? 'fill-current' : ''}`} />
+      </button>
+
       {/* Icon Section */}
       <div className="shrink-0 w-16 h-16 sm:w-20 sm:h-20 rounded-3xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-indigo-600 dark:text-indigo-400 group-hover:bg-indigo-600 group-hover:text-white transition-all duration-500 shadow-inner overflow-hidden">
         <Icon className="w-8 h-8 sm:w-10 sm:h-10" />
@@ -259,11 +331,6 @@ function ToolCard({
           <h3 className="text-sm sm:text-lg font-black text-slate-900 dark:text-white leading-tight">
             {tool.name}
           </h3>
-          {tool.isNew && (
-            <span className="px-2 py-0.5 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 text-[9px] font-black uppercase tracking-widest rounded-full">
-              New
-            </span>
-          )}
         </div>
         <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 line-clamp-2 leading-snug font-medium">
           {cleanDesc}

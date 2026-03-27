@@ -246,7 +246,7 @@ export function ImageToText() {
               {image ? (
                 <>
                   <img src={image} alt="Preview" className="w-full h-full object-contain p-4" />
-                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-sm">
+                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-md">
                     <button 
                       onClick={() => fileInputRef.current?.click()}
                       className="px-4 py-2 bg-white text-black rounded-xl font-bold text-xs flex items-center gap-2 hover:scale-105 transition-transform"

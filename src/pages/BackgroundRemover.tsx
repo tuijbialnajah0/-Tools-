@@ -478,11 +478,11 @@ export function BackgroundRemover() {
                   {viewMode === "side-by-side" && processedImage && (
                     <div className="grid grid-cols-2 gap-4 w-full h-full">
                       <div className="relative flex flex-col items-center justify-center">
-                        <span className="absolute top-4 left-4 bg-black/50 text-white text-xs px-2 py-1 rounded-md backdrop-blur-sm z-10">Original</span>
+                        <span className="absolute top-4 left-4 bg-black/50 text-white text-xs px-2 py-1 rounded-md backdrop-blur-md z-10">Original</span>
                         <img src={originalImage} alt="Original" className="max-w-full max-h-full rounded-lg shadow-xl object-contain" referrerPolicy="no-referrer" />
                       </div>
                       <div className="relative flex flex-col items-center justify-center">
-                        <span className="absolute top-4 left-4 bg-indigo-600/50 text-white text-xs px-2 py-1 rounded-md backdrop-blur-sm z-10">Processed</span>
+                        <span className="absolute top-4 left-4 bg-indigo-600/50 text-white text-xs px-2 py-1 rounded-md backdrop-blur-md z-10">Processed</span>
                         <div className="relative w-full h-full flex items-center justify-center">
                           <div className="absolute inset-0 rounded-lg overflow-hidden z-0">
                             <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/checkerboard.png')] opacity-20" />
