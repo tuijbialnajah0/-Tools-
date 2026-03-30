@@ -27,17 +27,12 @@ export function PFPAnima() {
   const imagesPerPage = 30;
 
   const fetchWithProxy = async (url: string, timeoutMs = 15000) => {
-    const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      let res = await fetch(url, { signal: controller.signal }).catch(() => null);
-      if (!res || !res.ok) {
-        res = await fetch(`https://corsproxy.io/?${encodeURIComponent(url)}`, { signal: controller.signal }).catch(() => null);
-      }
-      clearTimeout(id);
+      // Use our server-side proxy which is much more robust than client-side corsproxy.io
+      const res = await fetch(`/api/proxy-booru?url=${encodeURIComponent(url)}`);
       return res;
     } catch (e) {
-      clearTimeout(id);
+      console.error("Fetch with proxy failed:", e);
       return null;
     }
   };
@@ -504,20 +499,26 @@ export function PFPAnima() {
 
   const downloadSingleImage = async (img: ImageData) => {
     try {
-      let response = await fetch(img.url).catch(() => null);
-      if (!response || !response.ok) {
-        response = await fetch(`https://corsproxy.io/?${encodeURIComponent(img.url)}`);
-      }
+      // Always use our robust image proxy for downloads to bypass CORS and hotlinking protections
+      const response = await fetch(`/api/image-proxy?url=${encodeURIComponent(img.url)}`);
+      if (!response.ok) throw new Error("Proxy failed");
+      
       const blob = await response.blob();
-
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${keyword}_${img.id}.jpg`;
+      const ext = img.url.split('.').pop()?.split(/[#?]/)[0] || 'jpg';
+      const safeKeyword = keyword.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+      const safeId = img.id.replace(/[^a-z0-9]/gi, '_');
+      const timestamp = Date.now();
+      a.download = `anima_${safeKeyword}_${safeId}_${timestamp}.${ext}`;
       a.click();
-      URL.revokeObjectURL(url);
+      
+      // Cleanup
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (err) {
-      alert("Failed to download image. It might be protected by CORS.");
+      console.error("Download failed:", err);
+      alert("Failed to download image. The source might be protected.");
     }
   };
 
@@ -539,14 +540,12 @@ export function PFPAnima() {
         
         await Promise.all(chunk.map(async (img) => {
           try {
-            let response = await fetch(img.url).catch(() => null);
-            if (!response || !response.ok) {
-              response = await fetch(`https://corsproxy.io/?${encodeURIComponent(img.url)}`);
-            }
+            // Use our robust server-side proxy
+            const response = await fetch(`/api/image-proxy?url=${encodeURIComponent(img.url)}`);
             
             if (response && response.ok) {
               const blob = await response.blob();
-              const ext = img.url.split('.').pop()?.split('?')[0] || 'jpg';
+              const ext = img.url.split('.').pop()?.split(/[#?]/)[0] || 'jpg';
               const filename = `${keyword.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_${String(successCount + 1).padStart(3, '0')}.${ext}`;
               zip.file(filename, blob);
               successCount++;
@@ -570,7 +569,8 @@ export function PFPAnima() {
       const url = URL.createObjectURL(customBlob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${keyword.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_page_${currentPage}.zip`;
+      const safeKeyword = keyword.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+      a.download = `anima_${safeKeyword}_page_${currentPage}_${Date.now()}.zip`;
       a.click();
       URL.revokeObjectURL(url);
       
@@ -715,15 +715,14 @@ export function PFPAnima() {
                     const target = e.target as HTMLImageElement;
                     if (!target.dataset.triedThumb) {
                       target.dataset.triedThumb = 'true';
-                      target.src = img.thumbnail; // Fallback to original thumbnail if optimized fails
-                    } else if (!target.dataset.triedUrl) {
-                      target.dataset.triedUrl = 'true';
-                      target.src = img.url;
+                      target.src = img.thumbnail; // Fallback to original thumbnail
                     } else if (!target.dataset.triedProxy) {
                       target.dataset.triedProxy = 'true';
-                      target.src = `https://corsproxy.io/?${encodeURIComponent(img.url)}`;
-                    } else {
-                      target.src = 'https://via.placeholder.com/400?text=Image+Not+Found';
+                      // Use our robust server-side proxy as the ultimate fallback
+                      target.src = `/api/image-proxy?url=${encodeURIComponent(img.url)}`;
+                    } else if (!target.dataset.triedPlaceholder) {
+                      target.dataset.triedPlaceholder = 'true';
+                      target.src = `https://picsum.photos/seed/${img.id}/400/600?blur=2`;
                     }
                   }}
                 />

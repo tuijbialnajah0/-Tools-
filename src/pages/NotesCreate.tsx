@@ -30,7 +30,13 @@ export default function NotesCreate() {
   const [ocrProgress, setOcrProgress] = useState<string>('');
   const [progressPercent, setProgressPercent] = useState<number>(0);
   const [summaryLength, setSummaryLength] = useState<SummaryLength>('medium');
+  const [selectedTheme, setSelectedTheme] = useState<number>(0);
   const [copied, setCopied] = useState(false);
+
+  const themes = [
+    'Classic Paper', 'Midnight Neon', 'Emerald Forest', 'Cyberpunk', 
+    'Royal Velvet', 'Sakura Blossom', 'Oceanic Depth', 'High Contrast'
+  ];
   const [showDownloadMenu, setShowDownloadMenu] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const downloadMenuRef = useRef<HTMLDivElement>(null);
@@ -372,233 +378,326 @@ export default function NotesCreate() {
 
   const openCinematicView = () => {
     if (!notes || !file) return;
-    const html = generateCinematicHTML(generatedTitle, notes);
+    const html = generateCinematicHTML(generatedTitle, notes, selectedTheme);
     const blob = new Blob([html], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
     window.open(url, '_blank');
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8">
-      <div className="text-center space-y-4">
-        <h1 className="text-4xl font-bold tracking-tight text-gray-900 sm:text-5xl">
-          Notes Create
-        </h1>
-        <p className="text-lg text-gray-500 max-w-2xl mx-auto">
-          Convert any PDF or HTML file into smart, bullet-point notes instantly. 100% offline, fast, and secure.
-        </p>
+    <div className="min-h-screen bg-[#f8fafc] dark:bg-[#020617] py-12 px-4 sm:px-6 lg:px-8 relative overflow-hidden">
+      {/* Background Decorative Elements */}
+      <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none z-0">
+        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-500/5 rounded-full blur-[120px] animate-pulse"></div>
+        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-purple-500/5 rounded-full blur-[120px] animate-pulse" style={{ animationDelay: '2s' }}></div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        {/* Left Column: Upload & Settings */}
-        <div className="space-y-6">
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <FileUp className="w-5 h-5 text-indigo-600" />
-              Upload Document
-            </h2>
-            
-            <div 
-              onClick={() => fileInputRef.current?.click()}
-              className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors ${
-                file ? 'border-indigo-500 bg-indigo-50' : 'border-gray-300 hover:border-indigo-400 hover:bg-gray-50'
-              }`}
-            >
-              <input 
-                type="file" 
-                ref={fileInputRef} 
-                onChange={handleFileChange} 
-                accept=".pdf,.html,.htm" 
-                className="hidden" 
-              />
-              <Upload className={`w-10 h-10 mx-auto mb-3 ${file ? 'text-indigo-600' : 'text-gray-400'}`} />
-              {file ? (
-                <div>
-                  <p className="text-sm font-medium text-indigo-900">{file.name}</p>
-                  <p className="text-xs text-indigo-500 mt-1">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
-                </div>
-              ) : (
-                <div>
-                  <p className="text-sm font-medium text-gray-900">Click to upload PDF or HTML</p>
-                  <p className="text-xs text-gray-500 mt-1">PDF or HTML files only (Max 50MB)</p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <Settings className="w-5 h-5 text-indigo-600" />
-              Notes Settings
-            </h2>
-            
-            <div className="space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <label className="block text-sm font-medium text-gray-700">Summary Length</label>
-                <div className="grid grid-cols-3 gap-2 w-full sm:w-auto">
-                  {(['short', 'medium', 'long'] as SummaryLength[]).map((len) => (
-                    <button
-                      key={len}
-                      onClick={() => setSummaryLength(len)}
-                      className={`px-3 py-2 text-sm font-medium rounded-lg capitalize transition-colors ${
-                        summaryLength === len 
-                          ? 'bg-indigo-600 text-white' 
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                      }`}
-                    >
-                      {len}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <button
-                onClick={handleGenerateNotes}
-                disabled={!file || isProcessing || isGenerating}
-                className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {isProcessing || isGenerating ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    {isGenerating ? 'Typing Notes...' : 'Processing PDF...'}
-                  </>
-                ) : (
-                  <>
-                    <FileText className="w-5 h-5" />
-                    Generate Notes
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
+      <div className="max-w-6xl mx-auto space-y-12 relative z-10">
+        <div className="text-center space-y-6">
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+          >
+            <h1 className="text-5xl font-black tracking-tight text-slate-900 dark:text-white sm:text-6xl bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600 pb-2">
+              Notes Generator
+            </h1>
+            <div className="h-1.5 w-24 bg-gradient-to-r from-indigo-600 to-purple-600 mx-auto rounded-full mt-2"></div>
+          </motion.div>
+          
+          <motion.p 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.3, duration: 0.6 }}
+            className="text-xl text-slate-500 dark:text-slate-400 max-w-2xl mx-auto font-medium"
+          >
+            Transform complex documents into structured, beautiful study notes. 
+            <span className="block text-sm mt-2 font-mono text-indigo-500 uppercase tracking-widest">Powered by 𝙱𝙹𝙴 ~ Clan</span>
+          </motion.p>
         </div>
 
-        {/* Right Column: Results */}
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col h-[600px]">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
-            <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-              <FileText className="w-5 h-5 text-indigo-600" />
-              Generated Notes
-            </h2>
-            
-            {notes && !isGenerating && (
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  onClick={openCinematicView}
-                  className="flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:from-indigo-700 hover:to-purple-700 transition-all shadow-sm hover:shadow-md group"
-                  title="Open Cinematic Visual Mode"
-                >
-                  <Sparkles className="w-4 h-4 animate-pulse group-hover:scale-110 transition-transform" />
-                  <span className="text-xs sm:text-sm font-medium">Cinematic View</span>
-                </button>
-
-                <button
-                  onClick={copyToClipboard}
-                  className="p-2 text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                  title="Copy to clipboard"
-                >
-                  {copied ? <Check className="w-5 h-5 text-green-500" /> : <Copy className="w-5 h-5" />}
-                </button>
-                
-                <div className="relative" ref={downloadMenuRef}>
-                  <button
-                    onClick={() => setShowDownloadMenu(!showDownloadMenu)}
-                    className="flex items-center gap-1 px-3 py-2 text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all border border-transparent hover:border-indigo-100"
-                    title="Download options"
-                  >
-                    <Download className="w-5 h-5" />
-                    <ChevronDown className={`w-4 h-4 transition-transform ${showDownloadMenu ? 'rotate-180' : ''}`} />
-                  </button>
-
-                  {showDownloadMenu && (
-                    <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50 animate-in fade-in slide-in-from-top-2">
-                      <button
-                        onClick={() => downloadNotes('pdf')}
-                        className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 transition-colors"
-                      >
-                        <FileType className="w-4 h-4 text-red-500" />
-                        Download as PDF
-                      </button>
-                      <button
-                        onClick={() => downloadNotes('docx')}
-                        className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 transition-colors"
-                      >
-                        <FileIcon className="w-4 h-4 text-blue-500" />
-                        Download as Word
-                      </button>
-                      <button
-                        onClick={() => downloadNotes('txt')}
-                        className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 transition-colors"
-                      >
-                        <FileOutput className="w-4 h-4 text-gray-500" />
-                        Download as Text
-                      </button>
-                    </div>
-                  )}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          {/* Left Column: Upload & Settings */}
+          <div className="lg:col-span-4 space-y-6">
+            <motion.div 
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.4 }}
+              className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl p-8 rounded-[2rem] shadow-xl shadow-indigo-500/5 border border-white/20 dark:border-slate-800/50"
+            >
+              <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-6 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center">
+                  <FileUp className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                 </div>
-              </div>
-            )}
-          </div>
-
-          <div 
-            ref={notesContainerRef}
-            className="flex-1 bg-white rounded-xl p-6 overflow-y-auto border border-gray-200 shadow-inner relative custom-scrollbar"
-          >
-            {isProcessing ? (
-              <div className="h-full flex flex-col items-center justify-center text-gray-400 space-y-6 max-w-[80%] mx-auto">
-                <Loader2 className="w-10 h-10 animate-spin text-indigo-600" />
-                <div className="w-full space-y-2">
-                  <div className="flex justify-between text-sm font-medium text-gray-600">
-                    <span className="truncate pr-4">{ocrProgress}</span>
-                    <span>{progressPercent}%</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
-                    <div 
-                      className="bg-indigo-600 h-2.5 rounded-full transition-all duration-300 ease-out" 
-                      style={{ width: `${progressPercent}%` }}
-                    ></div>
-                  </div>
+                Upload
+              </h2>
+              
+              <div 
+                onClick={() => fileInputRef.current?.click()}
+                className={`group relative border-2 border-dashed rounded-2xl p-10 text-center cursor-pointer transition-all duration-300 ${
+                  file 
+                    ? 'border-indigo-500 bg-indigo-50/50 dark:bg-indigo-900/10' 
+                    : 'border-slate-200 dark:border-slate-800 hover:border-indigo-400 dark:hover:border-indigo-500 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                }`}
+              >
+                <input 
+                  type="file" 
+                  ref={fileInputRef} 
+                  onChange={handleFileChange} 
+                  accept=".pdf,.html,.htm" 
+                  className="hidden" 
+                />
+                <div className={`w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center transition-transform group-hover:scale-110 ${file ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 dark:bg-slate-800 text-slate-400'}`}>
+                  <Upload className="w-8 h-8" />
                 </div>
-              </div>
-            ) : errorMsg ? (
-              <div className="h-full flex flex-col items-center justify-center text-red-500 space-y-4 text-center px-4">
-                <FileText className="w-12 h-12 opacity-50" />
-                <p className="text-sm font-medium">{errorMsg}</p>
-              </div>
-            ) : (notes || isGenerating) ? (
-              <div className="prose prose-sm md:prose-base lg:prose-lg max-w-none text-gray-700 
-                prose-headings:text-gray-900 prose-headings:font-bold prose-headings:tracking-tight
-                prose-h1:text-4xl prose-h1:text-indigo-950 prose-h1:border-b-2 prose-h1:border-indigo-100 prose-h1:pb-8 prose-h1:mb-12
-                prose-h2:text-2xl prose-h2:text-indigo-900 prose-h2:mt-16 prose-h2:mb-8 prose-h2:border-l-4 prose-h2:border-indigo-200 prose-h2:pl-6
-                prose-h3:text-xl prose-h3:text-indigo-800 prose-h3:mt-10 prose-h3:mb-6
-                prose-p:leading-loose prose-p:mb-8
-                prose-a:text-indigo-600 prose-a:no-underline hover:prose-a:underline
-                prose-blockquote:border-l-4 prose-blockquote:border-indigo-500 prose-blockquote:bg-indigo-50/50 prose-blockquote:py-6 prose-blockquote:px-8 prose-blockquote:rounded-r-2xl prose-blockquote:not-italic prose-blockquote:text-gray-800 prose-blockquote:shadow-sm prose-blockquote:my-10
-                prose-li:marker:text-indigo-500 prose-li:mb-4 prose-li:leading-relaxed
-                prose-strong:text-gray-900 prose-strong:font-bold
-                prose-hr:border-gray-200 prose-hr:my-16
-                prose-table:border-collapse prose-table:w-full prose-table:my-12 prose-table:rounded-xl prose-table:overflow-hidden prose-table:border prose-table:border-gray-200
-                prose-thead:bg-indigo-50 prose-thead:text-indigo-900 prose-thead:border-b-2 prose-thead:border-indigo-100
-                prose-th:px-6 prose-th:py-4 prose-th:text-left prose-th:font-bold prose-th:border prose-th:border-gray-200
-                prose-td:px-6 prose-td:py-4 prose-td:border prose-td:border-gray-100
-                [&>*:first-child]:mt-0">
-                <Markdown remarkPlugins={[remarkGfm]}>{notes}</Markdown>
-                {isGenerating && (
-                  <div className="flex items-center gap-2 mt-8">
-                    <span className="inline-block w-3 h-8 bg-indigo-600 animate-pulse align-middle rounded-sm"></span>
-                    {notes.trim().length === 0 && (
-                      <span className="text-indigo-600 font-medium animate-pulse text-lg italic">Thinking...</span>
-                    )}
+                {file ? (
+                  <div className="space-y-1">
+                    <p className="text-sm font-bold text-slate-900 dark:text-white truncate max-w-[200px] mx-auto">{file.name}</p>
+                    <p className="text-xs text-indigo-500 font-mono uppercase tracking-tighter">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    <p className="text-sm font-bold text-slate-900 dark:text-white">Drop your file here</p>
+                    <p className="text-xs text-slate-500">PDF or HTML (Max 50MB)</p>
                   </div>
                 )}
-                <div ref={notesEndRef} className="h-20" />
               </div>
-            ) : (
-              <div className="h-full flex flex-col items-center justify-center text-gray-400 space-y-2">
-                <FileText className="w-12 h-12 opacity-20" />
-                <p className="text-sm">Upload a PDF or HTML file and click Generate Notes to see results here.</p>
+            </motion.div>
+
+            <motion.div 
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.5 }}
+              className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl p-8 rounded-[2rem] shadow-xl shadow-indigo-500/5 border border-white/20 dark:border-slate-800/50"
+            >
+              <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-6 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
+                  <Settings className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                </div>
+                Settings
+              </h2>
+              
+              <div className="space-y-6">
+                <div className="space-y-3">
+                  <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Summary Depth</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(['short', 'medium', 'long'] as SummaryLength[]).map((len) => (
+                      <button
+                        key={len}
+                        onClick={() => setSummaryLength(len)}
+                        className={`py-2.5 text-xs font-bold rounded-xl capitalize transition-all duration-300 ${
+                          summaryLength === len 
+                            ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30 scale-105' 
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                        }`}
+                      >
+                        {len}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Cinematic Theme</label>
+                  <select 
+                    value={selectedTheme}
+                    onChange={(e) => setSelectedTheme(Number(e.target.value))}
+                    className="w-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-sm font-bold rounded-xl px-4 py-3 outline-none border-none cursor-pointer"
+                  >
+                    {themes.map((t, i) => (
+                      <option key={t} value={i}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <button
+                  onClick={handleGenerateNotes}
+                  disabled={!file || isProcessing || isGenerating}
+                  className="w-full py-4 px-6 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold rounded-2xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 shadow-xl shadow-indigo-500/20 active:scale-95"
+                >
+                  {isProcessing || isGenerating ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      <span className="animate-pulse">{isGenerating ? 'Generating...' : 'Processing...'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-5 h-5" />
+                      Generate Notes
+                    </>
+                  )}
+                </button>
               </div>
-            )}
+            </motion.div>
+          </div>
+
+          {/* Right Column: Results */}
+          <div className="lg:col-span-8">
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.6 }}
+              className="bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl shadow-indigo-500/10 border border-slate-100 dark:border-slate-800 flex flex-col h-[700px] overflow-hidden"
+            >
+              <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50/50 dark:bg-slate-800/30">
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white">
+                    <FileText className="w-5 h-5" />
+                  </div>
+                  Preview
+                </h2>
+                
+                {notes && !isGenerating && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={openCinematicView}
+                      className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-500/20 group"
+                    >
+                      <Sparkles className="w-4 h-4 animate-pulse group-hover:scale-125 transition-transform" />
+                      <span className="text-sm font-bold">Cinematic View</span>
+                    </button>
+
+                    <div className="h-8 w-px bg-slate-200 dark:bg-slate-700 mx-1 hidden sm:block"></div>
+
+                    <button
+                      onClick={copyToClipboard}
+                      className="p-2.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-xl transition-all"
+                      title="Copy to clipboard"
+                    >
+                      {copied ? <Check className="w-5 h-5 text-green-500" /> : <Copy className="w-5 h-5" />}
+                    </button>
+                    
+                    <div className="relative" ref={downloadMenuRef}>
+                      <button
+                        onClick={() => setShowDownloadMenu(!showDownloadMenu)}
+                        className="flex items-center gap-2 px-4 py-2 text-slate-600 dark:text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-xl transition-all border border-slate-200 dark:border-slate-700"
+                      >
+                        <Download className="w-5 h-5" />
+                        <span className="text-sm font-bold">Export</span>
+                        <ChevronDown className={`w-4 h-4 transition-transform ${showDownloadMenu ? 'rotate-180' : ''}`} />
+                      </button>
+
+                      {showDownloadMenu && (
+                        <div className="absolute right-0 mt-3 w-56 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-100 dark:border-slate-700 py-3 z-50 animate-in fade-in slide-in-from-top-2">
+                          <button
+                            onClick={() => downloadNotes('pdf')}
+                            className="w-full flex items-center gap-3 px-5 py-3 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:text-indigo-600 transition-colors"
+                          >
+                            <FileType className="w-4 h-4 text-red-500" />
+                            Export as PDF
+                          </button>
+                          <button
+                            onClick={() => downloadNotes('docx')}
+                            className="w-full flex items-center gap-3 px-5 py-3 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:text-indigo-600 transition-colors"
+                          >
+                            <FileIcon className="w-4 h-4 text-blue-500" />
+                            Export as Word
+                          </button>
+                          <button
+                            onClick={() => downloadNotes('txt')}
+                            className="w-full flex items-center gap-3 px-5 py-3 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:text-indigo-600 transition-colors"
+                          >
+                            <FileOutput className="w-4 h-4 text-slate-500" />
+                            Export as Text
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div 
+                ref={notesContainerRef}
+                className="flex-1 bg-white dark:bg-slate-900 p-8 sm:p-12 overflow-y-auto relative custom-scrollbar"
+              >
+                {isProcessing ? (
+                  <div className="h-full flex flex-col items-center justify-center text-slate-400 space-y-8 max-w-md mx-auto text-center">
+                    <div className="relative">
+                      <div className="w-20 h-20 border-4 border-indigo-100 dark:border-indigo-900/30 rounded-full"></div>
+                      <div className="absolute top-0 left-0 w-20 h-20 border-4 border-indigo-600 rounded-full border-t-transparent animate-spin"></div>
+                    </div>
+                    <div className="w-full space-y-4">
+                      <div className="flex justify-between items-end">
+                        <div className="text-left">
+                          <p className="text-xs font-black text-indigo-600 uppercase tracking-widest mb-1">Status</p>
+                          <p className="text-sm font-bold text-slate-900 dark:text-white truncate max-w-[250px]">{ocrProgress}</p>
+                        </div>
+                        <span className="text-2xl font-black text-indigo-600">{progressPercent}%</span>
+                      </div>
+                      <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-3 overflow-hidden">
+                        <motion.div 
+                          initial={{ width: 0 }}
+                          animate={{ width: `${progressPercent}%` }}
+                          className="bg-gradient-to-r from-indigo-600 to-purple-600 h-full rounded-full" 
+                        ></motion.div>
+                      </div>
+                    </div>
+                  </div>
+                ) : errorMsg ? (
+                  <div className="h-full flex flex-col items-center justify-center text-red-500 space-y-4 text-center px-4">
+                    <div className="w-20 h-20 bg-red-50 dark:bg-red-900/20 rounded-full flex items-center justify-center">
+                      <FileText className="w-10 h-10 opacity-50" />
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-lg font-bold">Generation Failed</p>
+                      <p className="text-sm opacity-80 max-w-xs mx-auto">{errorMsg}</p>
+                    </div>
+                  </div>
+                ) : (notes || isGenerating) ? (
+                  <div className="prose prose-slate dark:prose-invert max-w-none 
+                    prose-headings:text-slate-900 dark:prose-headings:text-white prose-headings:font-black prose-headings:tracking-tight
+                    prose-h1:text-5xl prose-h1:text-indigo-950 dark:prose-h1:text-indigo-400 prose-h1:border-b-4 prose-h1:border-indigo-100 dark:prose-h1:border-indigo-900/50 prose-h1:pb-8 prose-h1:mb-12
+                    prose-h2:text-3xl prose-h2:text-indigo-900 dark:prose-h2:text-indigo-300 prose-h2:mt-16 prose-h2:mb-8 prose-h2:border-l-8 prose-h2:border-indigo-200 dark:prose-h2:border-indigo-800 prose-h2:pl-6
+                    prose-h3:text-2xl prose-h3:text-indigo-800 dark:prose-h3:text-indigo-400 prose-h3:mt-10 prose-h3:mb-6
+                    prose-p:text-lg prose-p:leading-relaxed prose-p:text-slate-600 dark:prose-p:text-slate-200 prose-p:mb-8
+                    prose-blockquote:border-l-8 prose-blockquote:border-indigo-500 prose-blockquote:bg-indigo-50/50 dark:prose-blockquote:bg-indigo-900/20 prose-blockquote:py-8 prose-blockquote:px-10 prose-blockquote:rounded-r-[2rem] prose-blockquote:not-italic prose-blockquote:text-slate-800 dark:prose-blockquote:text-slate-200 prose-blockquote:shadow-inner prose-blockquote:my-12
+                    prose-li:text-lg prose-li:mb-4 dark:prose-li:text-slate-200 prose-li:marker:text-indigo-500
+                    prose-table:block prose-table:overflow-x-auto prose-table:whitespace-nowrap prose-table:border-collapse prose-table:w-full prose-table:my-12 prose-table:rounded-3xl prose-table:border prose-table:border-slate-200 dark:prose-table:border-slate-800
+                    prose-thead:bg-slate-50 dark:prose-thead:bg-slate-800 prose-thead:text-slate-900 dark:prose-thead:text-white prose-thead:border-b-2 prose-thead:border-slate-200 dark:prose-thead:border-slate-700
+                    prose-th:px-8 prose-th:py-5 prose-th:text-left prose-th:font-black prose-th:uppercase prose-th:tracking-widest prose-th:text-xs prose-th:min-w-[200px]
+                    prose-td:px-8 prose-td:py-5 prose-td:border-b prose-td:border-slate-100 dark:prose-td:border-slate-800 prose-td:text-slate-600 dark:prose-td:text-slate-200 prose-td:min-w-[200px]
+                    [&>*:first-child]:mt-0">
+                    <Markdown remarkPlugins={[remarkGfm]}>{notes}</Markdown>
+                    {isGenerating && (
+                      <div className="flex items-center gap-3 mt-12">
+                        <div className="flex gap-1">
+                          <motion.span 
+                            animate={{ scale: [1, 1.5, 1] }}
+                            transition={{ repeat: Infinity, duration: 1 }}
+                            className="w-2 h-2 bg-indigo-600 rounded-full"
+                          ></motion.span>
+                          <motion.span 
+                            animate={{ scale: [1, 1.5, 1] }}
+                            transition={{ repeat: Infinity, duration: 1, delay: 0.2 }}
+                            className="w-2 h-2 bg-indigo-600 rounded-full"
+                          ></motion.span>
+                          <motion.span 
+                            animate={{ scale: [1, 1.5, 1] }}
+                            transition={{ repeat: Infinity, duration: 1, delay: 0.4 }}
+                            className="w-2 h-2 bg-indigo-600 rounded-full"
+                          ></motion.span>
+                        </div>
+                        {notes.trim().length === 0 && (
+                          <span className="text-indigo-600 font-black animate-pulse text-xl italic tracking-tight">Synthesizing Notes...</span>
+                        )}
+                      </div>
+                    )}
+                    <div ref={notesEndRef} className="h-20" />
+                  </div>
+                ) : (
+                  <div className="h-full flex flex-col items-center justify-center text-slate-400 space-y-6 text-center">
+                    <div className="w-24 h-24 bg-slate-50 dark:bg-slate-800 rounded-[2rem] flex items-center justify-center rotate-12">
+                      <FileText className="w-12 h-12 opacity-20 -rotate-12" />
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-lg font-bold text-slate-900 dark:text-white">Empty Preview</p>
+                      <p className="text-sm max-w-[250px] mx-auto">Upload a document and click generate to see your smart notes here.</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </motion.div>
           </div>
         </div>
       </div>

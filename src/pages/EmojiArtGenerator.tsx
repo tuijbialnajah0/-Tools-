@@ -308,7 +308,7 @@ export default function EmojiArtGenerator() {
 
     lines.forEach((line, i) => {
       // Split line into individual emojis (handling surrogate pairs)
-      const chars = Array.from(line);
+      const chars = Array.from(line as string);
       chars.forEach((char, j) => {
         ctx.fillText(char, j * actualCharWidth, i * fontSize);
       });

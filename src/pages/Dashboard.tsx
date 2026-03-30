@@ -22,7 +22,17 @@ import {
   ArrowRight,
   Star,
   MonitorPlay,
-  Palette
+  Palette,
+  Package,
+  Maximize2,
+  Type,
+  FileImage,
+  VideoIcon,
+  Youtube,
+  Eraser,
+  Film,
+  Copy,
+  Files
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
@@ -64,34 +74,45 @@ export function Dashboard() {
   };
 
   const tools: Tool[] = [
-    { id: 'background-remover', name: 'BG Remover', description: 'AI background removal.', category: ['Image & Photo', 'AI Tools'], icon: Image, isPopular: true, inDevelopment: true },
-    { id: 'qr-code-generator', name: 'QR Generator', description: 'Create custom QR codes.', category: 'Utility', icon: QrCode },
-    { id: 'smart-code-generator', name: 'Smart Code', description: 'Extract code from text.', category: 'Utility', icon: Code, isPopular: true },
-    { id: 'code-base', name: 'Code Base', description: 'AI code builder & preview.', category: ['AI Tools'], icon: FileCode, isPopular: true, inDevelopment: true },
-    { id: 'pdf-converter', name: 'PDF Converter', description: 'PDF conversion tools.', category: 'Utility', icon: FileText },
-    { id: 'whatsapp-s-create', name: 'WA Sticker', description: 'Create WhatsApp stickers.', category: 'Social', icon: MessageSquare },
-    { id: 'image-dataset-collector', name: 'Image Data-Set Collector', description: 'Collect images for AI.', category: 'Utility', icon: Layers },
-    { id: 'wa-s-generator', name: 'WA Generator', description: 'AI sticker generation.', category: 'Social', icon: Smile },
-    { id: 'pfp-anima', name: 'PFP Anima', description: 'Animate profile pictures.', category: 'Image & Photo', icon: Zap },
-    { id: 'image-colourizer', name: 'Image colorizer', description: 'Colorize B&W photos.', category: ['Image & Photo', 'AI Tools'], icon: Image, inDevelopment: true },
-    { id: 'notes-create', name: 'Notes Create', description: 'PDF/HTML to smart notes.', category: 'AI Tools', icon: FileText, isPopular: true },
-    { id: 'text-to-cinematic-notes', name: 'Text To Notes', description: 'Text to study experience.', category: 'AI Tools', icon: Sparkles },
-    { id: 'html-viewer', name: 'HTML Viewer', description: 'Sandbox HTML preview.', category: 'Utility', icon: FileCode },
-    { id: 'text-to-image', name: 'Text to Image', description: 'AI image generation.', category: 'AI Tools', icon: Image, inDevelopment: true },
-    { id: 'image-compressor', name: 'Image compressor', description: 'Browser-based compression.', category: 'Utility', icon: Image },
-    { id: 'bulk-image-compressor', name: 'Bulk Image Compressor', description: 'Batch image compression.', category: 'Utility', icon: Layers },
-    { id: 'code-formatter', name: 'Code Formatter', description: 'Clean & format code.', category: 'Utility', icon: Code },
-    { id: 'image-to-text', name: 'Image to Text', description: 'Extract text from images.', category: ['Image & Photo', 'Utility'], icon: FileText },
-    { id: 'document-to-text', name: 'Document to Text', description: 'Extract text from docs.', category: 'Utility', icon: FileText },
-    { id: 'image-formatter', name: 'Image Formatter', description: 'Convert image formats offline.', category: 'Image & Photo', icon: Image },
-    { id: 'word-counter', name: 'Word Counter', description: 'Count words, chars, and paragraphs.', category: 'Utility', icon: FileText },
-    { id: 'favicon-generator', name: 'Favicon', description: 'Generate favicon sets from images.', category: 'Utility', icon: Image },
-    { id: 'video-to-audio', name: 'Video to Audio', description: 'Extract audio from video files.', category: 'Utility', icon: Video },
-    { id: 'color-palette', name: 'Color Palette', description: 'Extract colors from images or generate random palettes.', category: 'Design', icon: Palette },
-    { id: 'notes-viewer', name: 'Notes Viewer', description: 'Manage your smart notes.', category: 'Utility', icon: MonitorPlay },
-    { id: 'emoji-art', name: 'Emoji Art', description: 'Convert photos into emoji pixel art.', category: ['Image & Photo', 'Social'], icon: Smile },
     { id: 'api-tester', name: 'API Tester', description: 'Test REST APIs with proxy support.', category: 'Utility', icon: Globe, inDevelopment: true },
     { id: 'audio-visualiser', name: 'Audio Visualiser', description: 'Convert MP3 to animated sound wave videos.', category: ['Social', 'Utility'], icon: MonitorPlay, inDevelopment: true },
+    { id: 'background-remover', name: 'BG Remover', description: 'AI background removal.', category: ['Image & Photo', 'AI Tools'], icon: Image, isPopular: true, inDevelopment: true },
+    { id: 'bulk-image-compressor', name: 'Bulk Image Compressor', description: 'Batch image compression.', category: 'Utility', icon: Layers },
+    { id: 'bulk-image-rotator', name: 'Bulk Image Rotator', description: 'Rotate multiple images individually and download all at once.', category: 'Utility', icon: RotateCw, isPopular: true },
+    { id: 'code-base', name: 'Code Base', description: 'AI code builder & preview.', category: ['AI Tools'], icon: FileCode, isPopular: true, inDevelopment: true },
+    { id: 'code-formatter', name: 'Code Formatter', description: 'Clean & format code.', category: 'Utility', icon: Code },
+    { id: 'color-palette', name: 'Color Palette', description: 'Extract colors from images or generate random palettes.', category: 'Design', icon: Palette },
+    { id: 'document-to-text', name: 'Document to Text', description: 'Extract text from docs.', category: 'Utility', icon: FileText },
+    { id: 'duplicate-image-finder', name: 'Duplicate Detector', description: 'Find duplicate images even with different filenames using visual hashing.', category: ['Image & Photo', 'Utility'], icon: Copy, isPopular: true },
+    { id: 'emoji-art', name: 'Emoji Art', description: 'Convert photos into emoji pixel art.', category: ['Image & Photo', 'Social'], icon: Smile },
+    { id: 'emoji-sticker-packer', name: 'Emoji Sticker Packer', description: 'Create custom WhatsApp sticker packs from emojis.', category: ['Social', 'Utility'], icon: Package },
+    { id: 'fancy-font-generator', name: 'Fancy Fonts', description: 'Convert text to stylish unicode fonts.', category: 'Utility', icon: Type, isPopular: true },
+    { id: 'favicon-generator', name: 'Favicon', description: 'Generate favicon sets from images.', category: 'Utility', icon: Image },
+    { id: 'html-viewer', name: 'HTML Viewer', description: 'Sandbox HTML preview.', category: 'Utility', icon: FileCode },
+    { id: 'image-colourizer', name: 'Image colorizer', description: 'Colorize B&W photos.', category: ['Image & Photo', 'AI Tools'], icon: Image, inDevelopment: true },
+    { id: 'image-compressor', name: 'Image compressor', description: 'Browser-based compression.', category: 'Utility', icon: Image },
+    { id: 'image-dataset-collector', name: 'Image Data-Set Collector', description: 'Collect images for AI.', category: 'Utility', icon: Layers },
+    { id: 'image-formatter', name: 'Image Formatter', description: 'Convert image formats offline.', category: 'Image & Photo', icon: Image },
+    { id: 'image-to-text', name: 'Image to Text', description: 'Extract text from images.', category: ['Image & Photo', 'Utility'], icon: FileText },
+    { id: 'image-upscaler', name: 'Image Upscaler', description: 'AI image upscaling & enhancement.', category: ['Image & Photo', 'AI Tools'], icon: Maximize2, isPopular: true, inDevelopment: true },
+    { id: 'bulk-metadata-remover', name: 'Metadata Remover', description: 'Strip EXIF data and hidden metadata from multiple images at once.', category: 'Utility', icon: Eraser, isPopular: true },
+    { id: 'notes-create', name: 'Notes Create', description: 'PDF/HTML to smart notes.', category: 'AI Tools', icon: FileText, isPopular: true },
+    { id: 'notes-viewer', name: 'Notes Viewer', description: 'Manage your smart notes.', category: 'Utility', icon: MonitorPlay },
+    { id: 'pdf-converter', name: 'PDF Converter', description: 'PDF conversion tools.', category: 'Utility', icon: FileText },
+    { id: 'pdf-to-image', name: 'PDF to Image', description: 'Convert PDF pages into high-quality images.', category: 'Utility', icon: FileImage },
+    { id: 'pfp-anima', name: 'PFP Anima', description: 'Animate profile pictures.', category: 'Image & Photo', icon: Zap },
+    { id: 'pfp-anima-remastered', name: 'PFP Anima Remastered', description: 'Anime asset search with bulk download.', category: ['Image & Photo', 'Social'], icon: Sparkles, isPopular: true },
+    { id: 'qr-code-generator', name: 'QR Generator', description: 'Create custom QR codes.', category: 'Utility', icon: QrCode },
+    { id: 'smart-code-generator', name: 'Smart Code', description: 'Extract code from text.', category: 'Utility', icon: Code, isPopular: true },
+    { id: 'text-to-image', name: 'Text to Image', description: 'AI image generation.', category: 'AI Tools', icon: Image, inDevelopment: true },
+    { id: 'text-to-cinematic-notes', name: 'Text To Notes', description: 'Text to study experience.', category: 'AI Tools', icon: Sparkles },
+    { id: 'video-compressor', name: 'Video Compressor', description: 'Compress videos offline in your browser.', category: 'Utility', icon: VideoIcon, isPopular: true },
+    { id: 'video-storyboard', name: 'Video Storyboard', description: 'Extract unique scenes and generate storyboards from videos.', category: 'Utility', icon: Film, isPopular: true },
+    { id: 'video-to-audio', name: 'Video to Audio', description: 'Extract audio from video files.', category: 'Utility', icon: Video },
+    { id: 'wa-s-generator', name: 'WA Generator', description: 'AI sticker generation.', category: 'Social', icon: Smile },
+    { id: 'whatsapp-s-create', name: 'WA Sticker', description: 'Create WhatsApp stickers.', category: 'Social', icon: MessageSquare },
+    { id: 'word-counter', name: 'Word Counter', description: 'Count words, chars, and paragraphs.', category: 'Utility', icon: FileText },
+    { id: 'youtube-multiview', name: 'YouTube Multi-View', description: 'Play one video in multiple instances simultaneously.', category: 'Social', icon: Youtube, isPopular: true, inDevelopment: true },
   ];
 
   const handleExecute = (tool: Tool) => {
@@ -106,8 +127,10 @@ export function Dashboard() {
       "Code Base": "/code-base",
       "PDF Converter": "/pdf-converter",
       "Image Data-Set Collector": "/image-dataset-collector",
+      "Image Upscaler": "/image-upscaler",
       "WA Generator": "/wa-s-generator",
       "PFP Anima": "/pfp-anima",
+      "PFP Anima Remastered": "/pfp-anima-remastered",
       "Image colorizer": "/image-colourizer",
       "Notes Create": "/notes-create",
       "Text To Notes": "/text-to-cinematic-notes",
@@ -127,6 +150,14 @@ export function Dashboard() {
       "Emoji Art": "/emoji-art",
       "API Tester": "/api-tester",
       "Audio Visualiser": "/audio-visualiser",
+      "Emoji Sticker Packer": "/emoji-sticker-packer",
+      "Fancy Fonts": "/fancy-font-generator",
+      "PDF to Image": "/pdf-to-image",
+      "Video Compressor": "/video-compressor",
+      "Video Storyboard": "/video-storyboard",
+      "YouTube Multi-View": "/youtube-multiview",
+      "Metadata Remover": "/bulk-metadata-remover",
+      "Duplicate Detector": "/duplicate-image-finder",
     };
 
     if (explicitMappings[toolName]) {
@@ -148,7 +179,7 @@ export function Dashboard() {
   }, [tools]);
   
   const filteredTools = useMemo(() => {
-    return tools.filter(tool => {
+    const filtered = tools.filter(tool => {
       const toolCategories = Array.isArray(tool.category) ? tool.category : [tool.category];
       
       let matchesCategory = false;
@@ -166,6 +197,8 @@ export function Dashboard() {
                            tool.description.toLowerCase().includes(searchQuery.toLowerCase());
       return matchesCategory && matchesSearch;
     });
+
+    return filtered.sort((a, b) => a.name.localeCompare(b.name));
   }, [selectedCategory, searchQuery, tools, favorites]);
 
   const popularTools = useMemo(() => tools.filter(t => t.isPopular && !t.inDevelopment), [tools]);
@@ -284,17 +317,17 @@ export function Dashboard() {
   );
 }
 
-function ToolCard({ 
-  tool, 
-  onExecute,
-  isFavorite,
-  onToggleFavorite
-}: { 
+const ToolCard: React.FC<{ 
   tool: Tool; 
   onExecute: (tool: Tool) => void;
   isFavorite: boolean;
   onToggleFavorite: (e: React.MouseEvent) => void;
-}) {
+}> = ({ 
+  tool, 
+  onExecute,
+  isFavorite,
+  onToggleFavorite
+}) => {
   const Icon = tool.icon;
   const cleanDesc = tool.description.replace(/\[STATUS:(working|development)\]/g, '').trim();
 

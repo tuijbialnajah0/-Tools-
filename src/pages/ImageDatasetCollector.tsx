@@ -15,6 +15,7 @@ interface ImageData {
 }
 
 export function ImageDatasetCollector() {
+  const [inputValue, setInputValue] = useState("");
   const [keyword, setKeyword] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [searchProgress, setSearchProgress] = useState(0);
@@ -28,12 +29,10 @@ export function ImageDatasetCollector() {
   const [statusMessage, setStatusMessage] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isFromCache, setIsFromCache] = useState(false);
+  const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
   const [showWaifuWarning, setShowWaifuWarning] = useState(false);
   
   const [lowQualityMode, setLowQualityMode] = useState(true);
-  const [searchMode, setSearchMode] = useState<"Anime" | "General" | "Mixed">("Anime");
-  const [searchSource, setSearchSource] = useState<"All" | "Wallhaven" | "Booru">("All");
-  const [filterSource, setFilterSource] = useState<string>("All");
   const [filterOrientation, setFilterOrientation] = useState<string>("All");
   const [filterQuality, setFilterQuality] = useState<string>("Any");
   const [searchCache, setSearchCache] = useState<Record<string, ImageData[]>>({});
@@ -57,11 +56,24 @@ export function ImageDatasetCollector() {
   ];
 
   const getThumbnailUrl = (img: ImageData) => {
-    if (!lowQualityMode) return `https://wsrv.nl/?url=${encodeURIComponent(img.thumbnail)}&output=webp&q=90`;
+    const lowerUrl = img.url.toLowerCase();
+    const isGif = lowerUrl.endsWith('.gif') || lowerUrl.includes('.gif?') || lowerUrl.includes('giphy.com/media/') || lowerUrl.includes('media.tenor.com/');
     
-    // Use a more resilient thumbnail proxy chain
-    const encodedUrl = encodeURIComponent(img.thumbnail);
-    return `https://wsrv.nl/?url=${encodedUrl}&w=400&h=400&fit=cover&output=webp&q=70&errorredirect=https%3A%2F%2Fimages.weserv.nl%2F%3Furl%3D${encodedUrl}%26w%3D400%26h%3D400%26fit%3Dcover`;
+    // Proxy sharding to bypass browser concurrent request limits
+    const subdomains = ['a', 'b', 'c'];
+    const shard = subdomains[Math.abs(img.id.split('').reduce((a, b) => (a << 5) - a + b.charCodeAt(0), 0)) % subdomains.length];
+    const baseUrl = `https://${shard}.wsrv.nl/`;
+    const encodedUrl = encodeURIComponent(img.url);
+
+    // Use proxy for all images to bypass hotlinking protection
+    if (!lowQualityMode) {
+      if (isGif) return `${baseUrl}?url=${encodedUrl}&n=-1`;
+      return `${baseUrl}?url=${encodedUrl}&output=webp&q=80&w=1200`; // High quality but still capped
+    }
+    
+    // Standard mode: 400px is plenty for grid thumbnails and loads much faster than 800px
+    if (isGif) return `${baseUrl}?url=${encodedUrl}&n=-1&w=400`;
+    return `${baseUrl}?url=${encodedUrl}&w=400&fit=cover&output=webp&q=75&errorredirect=https%3A%2F%2Fimages.weserv.nl%2F%3Furl%3D${encodedUrl}%26w%3D400%26fit%3Dcover`;
   };
 
   const fetchImageBlob = async (url: string): Promise<Blob | null> => {
@@ -98,20 +110,37 @@ export function ImageDatasetCollector() {
     return null;
   };
 
-  const fetchWithProxy = async (url: string, timeoutMs = 15000) => {
-    const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      let res = await fetch(url, { signal: controller.signal }).catch(() => null);
-      if (!res || !res.ok) {
-        res = await fetch(`https://corsproxy.io/?${encodeURIComponent(url)}`, { signal: controller.signal }).catch(() => null);
+  const fetchWithProxy = async (url: string, timeoutMs = 8000) => {
+    const proxies = [
+      url, // Direct
+      `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+      `https://corsproxy.io/?${encodeURIComponent(url)}`,
+      `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+      `https://thingproxy.freeboard.io/fetch/${url}`,
+      `https://proxy.cors.sh/${url}`,
+    ];
+
+    for (const proxyUrl of proxies) {
+      const controller = new AbortController();
+      const id = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const res = await fetch(proxyUrl, { 
+          signal: controller.signal,
+          headers: {
+            'Accept': 'application/json, text/html, */*'
+          }
+        });
+        if (res && res.ok) {
+          clearTimeout(id);
+          return res;
+        }
+      } catch (e) {
+        // Continue to next proxy
+      } finally {
+        clearTimeout(id);
       }
-      clearTimeout(id);
-      return res;
-    } catch (e) {
-      clearTimeout(id);
-      return null;
     }
+    return null;
   };
 
   const fetchWithTimeout = async (resource: string, options: any = {}) => {
@@ -279,11 +308,18 @@ export function ImageDatasetCollector() {
     }
   };
 
-  const handleSearch = async (e?: React.FormEvent, isLoadMore = false) => {
+  const handleSearch = async (e?: React.FormEvent, isLoadMore = false, overrideQuery?: string) => {
     if (e) e.preventDefault();
-    if (!keyword.trim()) return;
+    
+    const searchVal = overrideQuery || (isLoadMore ? keyword : inputValue);
+    if (!searchVal.trim()) return;
 
-    const fullKeyword = keyword.trim();
+    const fullKeyword = searchVal.trim();
+    if (!isLoadMore) {
+      setKeyword(fullKeyword);
+      setInputValue(fullKeyword);
+    }
+    
     const query = fullKeyword;
     const lowerQuery = query.toLowerCase();
 
@@ -293,7 +329,7 @@ export function ImageDatasetCollector() {
       return;
     }
 
-    const cacheKey = `${fullKeyword}-${searchMode}-${searchSource}`;
+    const cacheKey = `${fullKeyword}`;
 
     if (!isLoadMore && searchCache[cacheKey]) {
       if (lowerQuery.includes("frieren")) {
@@ -318,7 +354,8 @@ export function ImageDatasetCollector() {
     }
     
     const currentPage = isLoadMore ? page + 1 : 1;
-    setStatusMessage(isLoadMore ? "Fetching more results..." : "Searching images...");
+    setStatusMessage(isLoadMore ? "Fetching more results..." : "Searching");
+    setSearchProgress(10);
 
     try {
       setSearchProgress(10);
@@ -329,77 +366,605 @@ export function ImageDatasetCollector() {
       const formattedQuery = query.trim().toLowerCase().replace(/\s+/g, ' ');
       const encodedQuery = encodeURIComponent(formattedQuery);
       
-      let allResults: ImageData[] = [];
-
-      // Parallel Search Strategy - Optimized for Speed and Variety
+      let allResults: ImageData[] = isLoadMore ? [...images] : [];
       const searchPromises = [];
+      const seenUrls = new Set<string>(allResults.map(img => img.url.split('?')[0].replace(/^https?:\/\//, '')));
 
-      // Source: Wallhaven (General/Anime)
-      if (searchSource === "All" || searchSource === "Wallhaven") {
+      // Helper to check relevance
+      const searchTerms = query.toLowerCase().split(/\s+/).filter(w => w.length > 1 && !['the', 'and', 'for', 'with'].includes(w));
+      
+      const strictExcludedTerms = [
+        'gradient', 'solid color', 'blank', 'aesthetic background',
+        'ribbon', 'bows', 'frame', 'border', 'template', 'layout', 'palette',
+        'pattern', 'texture', 'background', 'logo', 'vector', 'clipart',
+        'icon', 'button', 'banner', 'ui ', ' ux ', 'mockup', 'wireframe',
+        'color palette', 'swatch', 'color scheme', 'wallpaper background',
+        'abstract', 'minimalist', 'geometric', 'shape', 'overlay', 'text box'
+      ];
+
+      const isRelevant = (img: ImageData) => {
+        const textToSearch = `${img.title} ${img.url} ${img.sourceUrl || ''}`.toLowerCase();
+        
+        // STRICT EXCLUSION - If any of these terms are in the title or URL, block it immediately
+        // if (strictExcludedTerms.some(term => textToSearch.includes(term))) {
+        //   return false;
+        // }
+
+        if (searchTerms.length === 0) return true;
+        
+        // Trust strict search engines/sources that filter by tags/subreddits accurately
+        const trustedSources = ['Safebooru', 'Flickr', 'Danbooru', 'Gelbooru', 'Konachan', 'Yande.re', 'Realbooru', 'Zerochan', 'MyAnimeList', 'ArtStation', 'Rule34', 'Xbooru', 'DeviantArt', 'Tumblr', 'Pixiv', 'Fandom Wiki', 'Wallhaven', 'WallpaperCave'];
+        if (trustedSources.some(src => img.source.includes(src))) return true;
+        
+        // Check if at least one search term is in the prompt/title/url
+        return searchTerms.some(term => textToSearch.includes(term));
+      };
+
+      const addResults = (newResults: ImageData[]) => {
+        const added: ImageData[] = [];
+        newResults.forEach(img => {
+          const normalizedUrl = img.url.split('?')[0].replace(/^https?:\/\//, '');
+          if (!seenUrls.has(normalizedUrl) && isRelevant(img)) {
+            seenUrls.add(normalizedUrl);
+            added.push(img);
+          }
+        });
+        
+        if (added.length > 0) {
+          allResults.push(...added);
+          
+          const q = query.toLowerCase();
+          
+          const getRelevanceScore = (img: ImageData) => {
+            let score = 0;
+            const title = (img.title || '').toLowerCase();
+            const url = (img.url || '').toLowerCase();
+
+            // Exact match in title
+            if (title.includes(q)) score += 100;
+            
+            // Exact match in URL
+            if (url.includes(q.replace(/\s+/g, '-')) || url.includes(q.replace(/\s+/g, '_'))) score += 50;
+
+            // Term matches
+            searchTerms.forEach(term => {
+              if (title.includes(term)) score += 10;
+              if (url.includes(term)) score += 5;
+            });
+
+            return score;
+          };
+
+          // Prioritize Anime sources first, then Search Engines, then others
+          const getPriority = (source: string) => {
+            const animeSources = ['Safebooru', 'Danbooru', 'Gelbooru', 'Konachan', 'Yande.re', 'Zerochan', 'MyAnimeList', 'Realbooru', 'Rule34', 'Xbooru', 'Sankaku'];
+            const searchEngines = ['Google', 'Bing', 'DuckDuckGo', 'Yahoo'];
+            const lowPrioritySources = ['Alamy', 'iStock', 'Shutterstock', 'Pixiv'];
+            
+            // If the query contains anime-related terms, boost anime sources to the absolute top
+            const isAnimeQuery = query.toLowerCase().match(/anime|manga|cosplay|waifu|husbando|r34|rule34|hentai|nsfw|pov/);
+            if (isAnimeQuery && animeSources.some(src => source.includes(src))) return 0; // Highest priority
+
+            if (animeSources.some(src => source.includes(src))) return 1;
+            if (searchEngines.some(src => source.includes(src))) return 2;
+            if (lowPrioritySources.some(src => source.includes(src))) return 10; // Lowest priority
+            return 3;
+          };
+          
+          allResults.sort((a, b) => {
+            const priorityA = getPriority(a.source);
+            const priorityB = getPriority(b.source);
+            
+            // If priorities are different, sort by priority first (lower number is better)
+            if (priorityA !== priorityB) {
+              return priorityA - priorityB;
+            }
+
+            // If priorities are the same, sort by relevance score
+            const scoreA = getRelevanceScore(a);
+            const scoreB = getRelevanceScore(b);
+            return scoreB - scoreA; // Higher score first
+          });
+          
+          setImages([...allResults]);
+        }
+      };
+
+      // Helper functions for new sources
+      const fetchBooru = (name: string, url: string, urlMapper: (item: any) => string, thumbMapper: (item: any) => string, titleMapper: (item: any) => string) => {
+        searchPromises.push((async () => {
+          try {
+            const res = await fetchWithProxy(url);
+            if (res && res.ok) {
+              const data = await res.json();
+              const items = Array.isArray(data) ? data : (data.post || data.items || data.data?.result?.items || (data.query?.pages ? Object.values(data.query.pages) : []));
+              const results = items.map((item: any, idx: number) => {
+                const imgUrl = urlMapper(item);
+                if (!imgUrl) return null;
+                return {
+                  id: `${name.toLowerCase()}-${idx}-${Math.random().toString(36).substring(7)}`,
+                  url: imgUrl,
+                  thumbnail: thumbMapper(item) || imgUrl,
+                  source: name,
+                  sourceUrl: url,
+                  title: titleMapper(item) || `${query} - ${name}`
+                };
+              }).filter(Boolean) as ImageData[];
+              addResults(results);
+            }
+          } catch (e) { console.warn(`${name} failed`, e); }
+        })());
+      };
+
+      const scrapeRegex = (name: string, url: string, regex: RegExp, urlMapper: (match: RegExpExecArray) => string) => {
+        searchPromises.push((async () => {
+          try {
+            const res = await fetchWithProxy(url);
+            if (res && res.ok) {
+              const text = await res.text();
+              const results: ImageData[] = [];
+              let match;
+              let idx = 0;
+              regex.lastIndex = 0;
+              while ((match = regex.exec(text)) !== null && idx < 40) {
+                const imgUrl = urlMapper(match);
+                if (imgUrl && !imgUrl.includes('favicon') && !imgUrl.includes('logo')) {
+                  results.push({
+                    id: `${name.toLowerCase()}-${idx}-${Math.random().toString(36).substring(7)}`,
+                    url: imgUrl,
+                    thumbnail: imgUrl,
+                    source: name,
+                    sourceUrl: url,
+                    title: `${query} - ${name} ${idx + 1}`
+                  });
+                  idx++;
+                }
+              }
+              addResults(results);
+            }
+          } catch (e) { console.warn(`${name} failed`, e); }
+        })());
+      };
+
+      const scrapeBingSite = (sourceName: string, siteUrl: string) => {
         searchPromises.push(
           (async () => {
             try {
-              const purity = searchMode === "Anime" ? "100" : "110"; // 100=SFW, 110=SFW+Sketchy
-              const category = searchMode === "Anime" ? "010" : "111"; // 010=Anime, 111=All
-              const res = await fetchWithProxy(`https://wallhaven.cc/api/v1/search?q=${encodeURIComponent(query)}&purity=${purity}&categories=${category}&sorting=relevance&page=${currentPage}`);
+              const searchUrl = `https://www.bing.com/images/search?q=site%3a${siteUrl}+${encodeURIComponent(query)}&adlt=off`;
+              const res = await fetchWithProxy(searchUrl);
               if (res && res.ok) {
-                const data = await res.json();
-                if (data && data.data) {
-                  return data.data.map((img: any) => ({
-                    id: `wh-${img.id}`,
-                    url: img.path,
-                    thumbnail: img.thumbs.large || img.thumbs.original,
-                    source: 'Wallhaven',
-                    sourceUrl: img.url,
-                    width: img.resolution.split('x')[0],
-                    height: img.resolution.split('x')[1],
-                    title: `Wallhaven ${img.id}`,
-                    type: searchMode === "Anime" ? 'Anime/Art' : 'General'
-                  }));
+                const text = await res.text();
+                const regex = /murl&quot;:&quot;(.*?)&quot;.*?turl&quot;:&quot;(.*?)&quot;/g;
+                let match;
+                const results: ImageData[] = [];
+                let idx = 0;
+                while ((match = regex.exec(text)) !== null && idx < 15) {
+                  results.push({
+                    id: `${sourceName.toLowerCase().replace(/\s+/g, '')}-${idx}-${Math.random().toString(36).substring(7)}`,
+                    url: match[1],
+                    thumbnail: match[2],
+                    source: sourceName,
+                    sourceUrl: `https://${siteUrl}`,
+                    title: query
+                  });
+                  idx++;
                 }
+                addResults(results);
               }
             } catch (e) {
-              console.warn("Wallhaven failed", e);
+              console.warn(`${sourceName} failed`, e);
             }
-            return [];
           })()
         );
-      }
+      };
 
-      // Source: Safebooru (Anime only)
-      if ((searchSource === "All" || searchSource === "Booru") && searchMode === "Anime") {
-        searchPromises.push(
-          (async () => {
+      // 16+ New Sources
+      fetchBooru('Danbooru', `https://danbooru.donmai.us/posts.json?tags=${encodeURIComponent(query)}&limit=40`, i => i.file_url || i.large_file_url, i => i.preview_file_url || i.file_url, i => i.tag_string);
+      fetchBooru('Gelbooru', `https://gelbooru.com/index.php?page=dapi&s=post&q=index&json=1&tags=${encodeURIComponent(query)}&limit=40`, i => i.file_url, i => i.preview_url || i.file_url, i => i.tags);
+      fetchBooru('Konachan', `https://konachan.net/post.json?tags=${encodeURIComponent(query)}&limit=40`, i => i.file_url, i => i.preview_url || i.file_url, i => i.tags);
+      fetchBooru('Yande.re', `https://yande.re/post.json?tags=${encodeURIComponent(query)}&limit=40`, i => i.file_url, i => i.preview_url || i.file_url, i => i.tags);
+      fetchBooru('Realbooru', `https://realbooru.com/index.php?page=dapi&s=post&q=index&json=1&tags=${encodeURIComponent(query)}&limit=40`, i => `https://realbooru.com/images/${i.directory}/${i.image}`, i => `https://realbooru.com/thumbnails/${i.directory}/thumbnail_${i.image}`, i => i.tags);
+      fetchBooru('Rule34', `https://api.rule34.xxx/index.php?page=dapi&s=post&q=index&json=1&tags=${encodeURIComponent(query)}&limit=40`, i => i.file_url, i => i.preview_url || i.file_url, i => i.tags);
+      fetchBooru('Xbooru', `https://xbooru.com/index.php?page=dapi&s=post&q=index&json=1&tags=${encodeURIComponent(query)}&limit=40`, i => `https://xbooru.com/images/${i.directory}/${i.image}`, i => `https://xbooru.com/thumbnails/${i.directory}/thumbnail_${i.image}`, i => i.tags);
+      fetchBooru('Qwant', `https://api.qwant.com/v3/search/images?q=${encodeURIComponent(query)}&count=40`, i => i.media, i => i.thumbnail, i => i.title);
+      fetchBooru('Wikimedia', `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrnamespace=6&gsrsearch=${encodeURIComponent(query)}&gsrlimit=40&prop=imageinfo&iiprop=url&format=json`, i => i.imageinfo?.[0]?.url, i => i.imageinfo?.[0]?.url, i => i.title);
+      fetchBooru('ArtStation', `https://www.artstation.com/api/v2/search/projects.json?query=${encodeURIComponent(query)}&page=1&per_page=40`, i => i.cover?.large_image_url, i => i.cover?.small_image_url, i => i.title);
+      fetchBooru('Wallhaven', `https://wallhaven.cc/api/v1/search?q=${encodeURIComponent(query)}`, i => i.path, i => i.thumbs?.original || i.path, i => i.id);
+      fetchBooru('Sankaku', `https://capi-v2.sankakucomplex.com/posts?tags=${encodeURIComponent(query)}&limit=40`, i => i.file_url, i => i.preview_url || i.file_url, i => i.tags);
+      
+      scrapeRegex('Imgur', `https://imgur.com/search?q=${encodeURIComponent(query)}`, /<img alt="" src="\/\/i\.imgur\.com\/([^"]+)"/g, m => `https://i.imgur.com/${m[1].replace('b.jpg', '.jpg')}`);
+      scrapeRegex('Pexels', `https://www.pexels.com/search/${encodeURIComponent(query)}/`, /src="(https:\/\/images\.pexels\.com\/photos\/[^"]+)"/g, m => m[1].split('?')[0]);
+      scrapeRegex('Pixabay', `https://pixabay.com/images/search/${encodeURIComponent(query)}/`, /src="(https:\/\/cdn\.pixabay\.com\/photo\/[^"]+)"/g, m => m[1]);
+      scrapeRegex('Giphy', `https://giphy.com/search/${encodeURIComponent(query)}`, /href="(https:\/\/giphy\.com\/gifs\/[^"]+)"/g, m => `https://media.giphy.com/media/${m[1].split('-').pop()}/giphy.gif`);
+      scrapeRegex('Tenor', `https://tenor.com/search/${encodeURIComponent(query)}-gifs`, /src="(https:\/\/media\.tenor\.com\/[^"]+)"/g, m => m[1]);
+      scrapeRegex('Zerochan', `https://www.zerochan.net/${encodeURIComponent(query)}`, /src="(https:\/\/s1\.zerochan\.net\/[^"]+)"/g, m => m[1]);
+      scrapeRegex('MyAnimeList', `https://myanimelist.net/search/all?q=${encodeURIComponent(query)}`, /src="(https:\/\/cdn\.myanimelist\.net\/images\/[^"]+)"/g, m => m[1].replace('/r/50x70', '').replace('/r/100x140', ''));
+
+      // Mega Sources Addition (via Bing Site Search)
+      scrapeBingSite('DeviantArt', 'deviantart.com');
+      scrapeBingSite('Tumblr', 'tumblr.com');
+      scrapeBingSite('Pixiv', 'pixiv.net');
+      scrapeBingSite('Fandom Wiki', 'fandom.com');
+      scrapeBingSite('KnowYourMeme', 'knowyourmeme.com');
+      scrapeBingSite('Freepik', 'freepik.com');
+      scrapeBingSite('Shutterstock', 'shutterstock.com');
+      scrapeBingSite('Getty Images', 'gettyimages.com');
+      scrapeBingSite('9GAG', '9gag.com');
+      scrapeBingSite('Behance', 'behance.net');
+      scrapeBingSite('Dribbble', 'dribbble.com');
+      scrapeBingSite('WallpaperCave', 'wallpapercave.com');
+      scrapeBingSite('IMDb', 'imdb.com');
+      scrapeBingSite('IGN', 'ign.com');
+      scrapeBingSite('Vecteezy', 'vecteezy.com');
+      scrapeBingSite('Alamy', 'alamy.com');
+      scrapeBingSite('iStock', 'istockphoto.com');
+
+      // Source: Pinterest (Direct Scrape via Proxy)
+      searchPromises.push(
+        (async () => {
+          try {
+            const searchUrl = `https://www.pinterest.com/search/pins/?q=${encodeURIComponent(query)}`;
+            const res = await fetchWithProxy(searchUrl, 15000);
+            if (res && res.ok) {
+              const html = await res.text();
+              const pinImgRegex = /https:\/\/i\.pinimg\.com\/(?:originals|736x|564x|474x|236x)\/[a-f0-9]+\/[a-f0-9]+\/[a-f0-9]+\/[a-f0-9a-f]+\.(?:jpg|jpeg|png|webp|gif)/gi;
+              const matches = html.match(pinImgRegex);
+              if (matches) {
+                const results: ImageData[] = [];
+                const seenPins = new Set<string>();
+                matches.forEach((match, idx) => {
+                  const highResUrl = match.replace(/\/(?:736x|564x|474x|236x)\//, '/originals/');
+                  if (!seenPins.has(highResUrl)) {
+                    seenPins.add(highResUrl);
+                    results.push({
+                      id: `pin-direct-${idx}-${Math.random().toString(36).substring(7)}`,
+                      url: highResUrl,
+                      thumbnail: match,
+                      source: 'Pinterest',
+                      sourceUrl: searchUrl,
+                      title: `${query} - Pinterest Pin ${idx + 1}`
+                    });
+                  }
+                });
+                addResults(results);
+              }
+            }
+          } catch (e) {
+            console.warn("Pinterest direct search failed", e);
+          }
+        })()
+      );
+
+      // Source: Pinterest (via Bing - Enhanced)
+      searchPromises.push(
+        (async () => {
+          try {
+            const searchUrl = `https://www.bing.com/images/search?q=site%3apinterest.com+${encodeURIComponent(query)}&adlt=off`;
+            const res = await fetchWithProxy(searchUrl);
+            setSearchProgress(prev => Math.min(prev + 10, 85));
+            if (res && res.ok) {
+              const text = await res.text();
+              const regex = /murl&quot;:&quot;(.*?)&quot;.*?turl&quot;:&quot;(.*?)&quot;/g;
+              let match;
+              const results: ImageData[] = [];
+              let idx = 0;
+              while ((match = regex.exec(text)) !== null && idx < 60) {
+                const url = match[1].replace(/&amp;/g, '&');
+                const thumbnail = match[2].replace(/&amp;/g, '&');
+                if (url.includes('pinimg.com')) {
+                  const highResUrl = url.replace(/\/(?:736x|564x|474x|236x)\//, '/originals/');
+                  results.push({
+                    id: `pin-bing-${idx}-${Math.random().toString(36).substring(7)}`,
+                    url: highResUrl,
+                    thumbnail,
+                    source: 'Pinterest',
+                    sourceUrl: `https://www.pinterest.com/search/pins/?q=${encodeURIComponent(query)}`,
+                    title: `${query} - Pinterest Image ${idx + 1}`
+                  });
+                  idx++;
+                }
+              }
+              addResults(results);
+            }
+          } catch (e) {
+            console.warn("Pinterest via Bing failed", e);
+          }
+        })()
+      );
+
+      // Source: Lexica.art (High Quality AI/Art)
+      searchPromises.push(
+        (async () => {
+          try {
+            const apiUrl = `https://lexica.art/api/v1/search?q=${encodeURIComponent(query)}`;
+            const res = await fetchWithProxy(apiUrl);
+            setSearchProgress(prev => Math.min(prev + 10, 85));
+            if (!res) return;
+            const data = await res.json();
+            
+            if (data && data.images) {
+              const results = data.images.map((img: any) => ({
+                id: `lex-${img.id}`,
+                url: img.src,
+                thumbnail: img.srcSmall || img.src,
+                source: 'Lexica',
+                sourceUrl: `https://lexica.art/prompt/${img.id}`,
+                width: img.width,
+                height: img.height,
+                title: img.prompt || query,
+              }));
+              addResults(results);
+            }
+          } catch (e) {
+            console.warn("Lexica API failed", e);
+          }
+        })()
+      );
+
+      // Source: Unsplash (High Quality Photography)
+      searchPromises.push(
+        (async () => {
+          try {
+            const apiUrl = `https://unsplash.com/napi/search/photos?query=${encodeURIComponent(query)}&per_page=30&page=${currentPage}`;
+            const res = await fetchWithProxy(apiUrl);
+            setSearchProgress(prev => Math.min(prev + 10, 85));
+            if (!res) return;
+            const data = await res.json();
+            
+            if (data && data.results) {
+              const results = data.results.map((img: any) => ({
+                id: `uns-${img.id}`,
+                url: img.urls.regular,
+                thumbnail: img.urls.small,
+                source: 'Unsplash',
+                sourceUrl: img.links.html,
+                width: img.width,
+                height: img.height,
+                title: img.description || img.alt_description || query,
+              }));
+              addResults(results);
+            }
+          } catch (e) {
+            console.warn("Unsplash API failed", e);
+          }
+        })()
+      );
+
+      // Source: DuckDuckGo (Instant Answer API) + Web Fallback
+      searchPromises.push(
+        (async () => {
+          try {
+            const apiUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&kp=-2`;
+            const res = await fetchWithProxy(apiUrl);
+            setSearchProgress(prev => Math.min(prev + 10, 85));
+            const results: ImageData[] = [];
+            
+            if (res) {
+              const data = await res.json();
+              if (data.Image) {
+                const fullImageUrl = data.Image.startsWith('http') ? data.Image : `https://duckduckgo.com${data.Image}`;
+                results.push({
+                  id: `ddg-ia-main-${Math.random().toString(36).substring(7)}`,
+                  url: fullImageUrl,
+                  thumbnail: fullImageUrl,
+                  source: 'DuckDuckGo',
+                  sourceUrl: data.AbstractURL || data.DefinitionURL || `https://duckduckgo.com/?q=${encodeURIComponent(query)}`,
+                  title: data.Heading || query,
+                });
+              }
+              
+              if (data.RelatedTopics) {
+                data.RelatedTopics.forEach((topic: any, idx: number) => {
+                  if (topic.Icon && topic.Icon.URL) {
+                    const iconUrl = topic.Icon.URL.startsWith('http') ? topic.Icon.URL : `https://duckduckgo.com${topic.Icon.URL}`;
+                    results.push({
+                      id: `ddg-ia-rel-${idx}-${Math.random().toString(36).substring(7)}`,
+                      url: iconUrl,
+                      thumbnail: iconUrl,
+                      source: 'DuckDuckGo',
+                      sourceUrl: topic.FirstURL || `https://duckduckgo.com/?q=${encodeURIComponent(query)}`,
+                      title: topic.Text || query,
+                    });
+                  }
+                });
+              }
+            }
+
+            // Fallback to Yahoo Images (acts as a web search engine similar to DDG) to get more images
             try {
-              const res = await fetchWithProxy(`https://safebooru.org/index.php?page=dapi&s=post&q=index&json=1&limit=40&pid=${currentPage - 1}&tags=${encodeURIComponent('*' + query.replace(/\s+/g, '_') + '*')}`);
-              if (res && res.ok) {
-                const data = await res.json();
-                if (Array.isArray(data)) {
-                  return data.map((img: any) => ({
-                    id: `sb-${img.id}`,
-                    url: `https://safebooru.org/images/${img.directory}/${img.image}`,
-                    thumbnail: `https://safebooru.org/thumbnails/${img.directory}/thumbnail_${img.image.replace(/\.[^/.]+$/, "")}.jpg`,
-                    source: 'Safebooru',
-                    sourceUrl: `https://safebooru.org/index.php?page=post&s=view&id=${img.id}`,
-                    width: img.width,
-                    height: img.height,
-                    title: `Safebooru ${img.id}`,
-                    type: 'Anime/Art'
-                  }));
+              const yahooUrl = `https://images.search.yahoo.com/search/images?p=${encodeURIComponent(query)}&vm=p`;
+              const yahooRes = await fetchWithProxy(yahooUrl);
+              if (yahooRes && yahooRes.ok) {
+                const text = await yahooRes.text();
+                const regex = /data-obj='(.*?)'/g;
+                let match;
+                let idx = 0;
+                while ((match = regex.exec(text)) !== null && idx < 40) {
+                  try {
+                    const obj = JSON.parse(match[1].replace(/&quot;/g, '"'));
+                    if (obj.imgurl) {
+                      results.push({
+                        id: `ddg-web-${idx}-${Math.random().toString(36).substring(7)}`,
+                        url: obj.imgurl,
+                        thumbnail: obj.thumburl || obj.imgurl,
+                        source: 'DuckDuckGo / Web',
+                        sourceUrl: obj.rurl || yahooUrl,
+                        title: obj.tit || `${query} - Web Image ${idx + 1}`
+                      });
+                      idx++;
+                    }
+                  } catch(e) {}
                 }
               }
             } catch (e) {
-              console.warn("Safebooru failed", e);
+              console.warn("DDG/Web fallback failed", e);
             }
-            return [];
-          })()
-        );
-      }
+            
+            if (results.length > 0) {
+              addResults(results);
+            }
+          } catch (e) {
+            console.warn("DuckDuckGo search failed", e);
+          }
+        })()
+      );
+
+      // Source: Google Images (Web Scrape)
+      searchPromises.push(
+        (async () => {
+          try {
+            const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}&tbm=isch&safe=off`;
+            const res = await fetchWithProxy(searchUrl);
+            setSearchProgress(prev => Math.min(prev + 10, 85));
+            if (res && res.ok) {
+              const text = await res.text();
+              const urls = new Set<string>();
+              
+              // Pattern 1: Google's array format ["url", height, width]
+              const regex1 = /\["(https:\/\/[^"]+)",\d+,\d+\]/g;
+              let match;
+              while ((match = regex1.exec(text)) !== null) {
+                urls.add(match[1]);
+              }
+              
+              // Pattern 2: Generic image URLs in quotes
+              const regex2 = /"(https:\/\/[^"]+\.(?:jpg|jpeg|png|webp))"/gi;
+              while ((match = regex2.exec(text)) !== null) {
+                urls.add(match[1]);
+              }
+
+              const results: ImageData[] = [];
+              let idx = 0;
+              
+              for (let url of urls) {
+                if (idx >= 60) break;
+                
+                // Clean unicode escapes
+                url = url.replace(/\\u003d/g, '=').replace(/\\u0026/g, '&').replace(/\\\\/g, '\\');
+                
+                // Filter out Google's own thumbnails, icons, and tracking pixels
+                if (url.includes('gstatic.com') || url.includes('google.com') || url.includes('favicon') || url.includes('profile')) continue;
+                
+                results.push({
+                  id: `google-${idx}-${Math.random().toString(36).substring(7)}`,
+                  url,
+                  thumbnail: url, // Proxy will handle resizing
+                  source: 'Google Images',
+                  sourceUrl: searchUrl,
+                  title: `${query} - Google Image ${idx + 1}`
+                });
+                idx++;
+              }
+              
+              if (results.length > 0) {
+                addResults(results);
+              }
+            }
+          } catch (e) {
+            console.warn("Google Images search failed", e);
+          }
+        })()
+      );
+
+      // Source: Bing Dataset (formerly Google/Bing)
+      searchPromises.push(
+        (async () => {
+          try {
+            const searchUrl = `https://www.bing.com/images/search?q=${encodeURIComponent(query)}&adlt=off`;
+            const res = await fetchWithProxy(searchUrl);
+            setSearchProgress(prev => Math.min(prev + 10, 85));
+            if (res && res.ok) {
+              const text = await res.text();
+              const regex = /murl&quot;:&quot;(.*?)&quot;.*?turl&quot;:&quot;(.*?)&quot;/g;
+              let match;
+              const results: ImageData[] = [];
+              let idx = 0;
+              while ((match = regex.exec(text)) !== null && idx < 100) {
+                const url = match[1].replace(/&amp;/g, '&');
+                const thumbnail = match[2].replace(/&amp;/g, '&');
+                results.push({
+                  id: `bing-${idx}-${Math.random().toString(36).substring(7)}`,
+                  url,
+                  thumbnail,
+                  source: 'Bing Images',
+                  sourceUrl: searchUrl,
+                  title: `${query} - Bing Image ${idx + 1}`
+                });
+                idx++;
+              }
+              addResults(results);
+            }
+          } catch (e) {
+            console.warn("Bing Images failed", e);
+          }
+        })()
+      );
+
+      // Source: Safebooru (Anime / Manga Characters)
+      searchPromises.push(
+        (async () => {
+          try {
+            const tags = query.trim().replace(/\s+/g, '_');
+            const apiUrl = `https://safebooru.org/index.php?page=dapi&s=post&q=index&tags=${encodeURIComponent(tags)}&json=1&limit=40`;
+            const res = await fetchWithProxy(apiUrl);
+            setSearchProgress(prev => Math.min(prev + 10, 85));
+            if (res && res.ok) {
+              const data = await res.json();
+              if (Array.isArray(data)) {
+                const results = data.map((item: any) => ({
+                  id: `safebooru-${item.id}`,
+                  url: `https://safebooru.org/images/${item.directory}/${item.image}`,
+                  thumbnail: `https://safebooru.org/thumbnails/${item.directory}/thumbnail_${item.image.replace(/\.[^/.]+$/, "")}.jpg`,
+                  source: 'Safebooru',
+                  sourceUrl: `https://safebooru.org/index.php?page=post&s=view&id=${item.id}`,
+                  title: item.tags || query,
+                  width: item.width,
+                  height: item.height
+                }));
+                addResults(results);
+              }
+            }
+          } catch (e) {
+            console.warn("Safebooru failed", e);
+          }
+        })()
+      );
+
+      // Source: Flickr (IRL, Photography)
+      searchPromises.push(
+        (async () => {
+          try {
+            const tags = query.trim().replace(/\s+/g, ',');
+            const apiUrl = `https://api.flickr.com/services/feeds/photos_public.gne?tags=${encodeURIComponent(tags)}&format=json&nojsoncallback=1`;
+            const res = await fetchWithProxy(apiUrl);
+            setSearchProgress(prev => Math.min(prev + 10, 85));
+            if (res && res.ok) {
+              const data = await res.json();
+              if (data?.items) {
+                const results = data.items.map((item: any, idx: number) => ({
+                  id: `flickr-${idx}-${Math.random().toString(36).substring(7)}`,
+                  url: item.media.m.replace('_m.jpg', '_b.jpg'), // Get larger image
+                  thumbnail: item.media.m,
+                  source: 'Flickr',
+                  sourceUrl: item.link,
+                  title: item.title || query
+                }));
+                addResults(results);
+              }
+            }
+          } catch (e) {
+            console.warn("Flickr failed", e);
+          }
+        })()
+      );
 
       setSearchProgress(50);
-      const resultsArray = await Promise.all(searchPromises);
       
-      allResults = resultsArray.flat();
+      // Use a race to not wait forever for slow sources
+      const allSettledPromise = Promise.allSettled(searchPromises);
+      const timeoutPromise = new Promise(resolve => setTimeout(resolve, 12000));
+      
+      await Promise.race([allSettledPromise, timeoutPromise]);
       
       setSearchProgress(90);
 
@@ -409,13 +974,8 @@ export function ImageDatasetCollector() {
         return;
       }
 
-      // Deduplicate and Update
-      const newImages = isLoadMore ? [...images, ...allResults] : allResults;
-      const uniqueImages: ImageData[] = Array.from(
-        new Map<string, ImageData>(newImages.map(item => [item.url, item])).values()
-      );
-      
-      setImages(uniqueImages);
+      // Final Deduplication and Update
+      const uniqueImages = allResults;
       
       // Auto-select based on count
       if (!isLoadMore) {
@@ -423,18 +983,12 @@ export function ImageDatasetCollector() {
         setSelectedImageIds(initialSelected);
         setSearchCache(prev => ({ ...prev, [cacheKey]: uniqueImages }));
       } else {
-        // If loading more, add new images to selection if we haven't reached the count
-        if (selectedImageIds.size < selectedCount) {
-          setSelectedImageIds(prev => {
-            const next = new Set(prev);
-            uniqueImages.slice(0, selectedCount).forEach(img => next.add(img.id));
-            return next;
-          });
-        }
+        // If loading more, update cache as well
+        setSearchCache(prev => ({ ...prev, [cacheKey]: uniqueImages }));
       }
 
       setPage(currentPage);
-      setHasMore(allResults.length >= 20);
+      setHasMore(allResults.length > images.length);
 
     } catch (err: any) {
       console.error("Search error:", err);
@@ -450,34 +1004,54 @@ export function ImageDatasetCollector() {
     // Only trigger search if there are already results (meaning a search was performed)
     // or if the keyword is not empty and we're not currently searching
     if (keyword.trim() && images.length > 0 && !isSearching) {
-      handleSearch();
+      handleSearch(undefined, false, keyword);
     }
-  }, [searchMode, searchSource]);
+  }, []);
 
-  const filteredImages = images.filter(img => {
-    if (filterSource !== "All" && img.source !== filterSource) return false;
-    
-    // Quality filter
-    if (filterQuality === "High (500px+)") {
-      if (img.width && img.height && (img.width < 500 || img.height < 500)) return false;
-    } else if (filterQuality === "Ultra (1000px+)") {
-      if (img.width && img.height && (img.width < 1000 || img.height < 1000)) return false;
-    }
+  const filteredImages = React.useMemo(() => {
+    return images.filter(img => {
+      if (failedImages.has(img.id)) return false;
 
-    // Exclude irrelevant patterns/designs but keep cosplay and characters
-    const excludedTerms = ['pattern', 'texture', 'background', 'logo', 'vector', 'clipart'];
-    const titleLower = img.title.toLowerCase();
-    if (excludedTerms.some(term => titleLower.includes(term))) return false;
+      // Quality filter
+      if (filterQuality === "High (500px+)") {
+        if (img.width && img.height && (img.width < 500 || img.height < 500)) return false;
+      } else if (filterQuality === "Ultra (1000px+)") {
+        if (img.width && img.height && (img.width < 1000 || img.height < 1000)) return false;
+      }
 
-    if (filterOrientation !== "All") {
-      if (!img.width || !img.height) return false;
-      const ratio = img.width / img.height;
-      if (filterOrientation === "Portrait" && ratio >= 1) return false;
-      if (filterOrientation === "Landscape" && ratio <= 1) return false;
-      if (filterOrientation === "Square" && (ratio < 0.9 || ratio > 1.1)) return false;
-    }
-    return true;
-  });
+      // Exclude irrelevant patterns/designs but keep cosplay and characters
+      const excludedTerms = [
+        'pattern', 'texture', 'background', 'logo', 'vector', 'clipart', 
+        'gradient', 'solid color', 'blank', 'aesthetic background', 
+        'ribbon', 'bows', 'frame', 'border', 'template', 'layout', 'palette',
+        'icon', 'button', 'banner', 'ui ', ' ux ', 'mockup', 'wireframe',
+        'color palette', 'swatch', 'color scheme', 'wallpaper background',
+        'abstract', 'minimalist', 'geometric', 'shape', 'overlay', 'text box'
+      ];
+      
+      // Only apply exclusion if the query itself doesn't contain these words
+      const queryLower = keyword.toLowerCase();
+      const shouldExclude = !excludedTerms.some(term => queryLower.includes(term));
+
+      if (shouldExclude) {
+        const textToSearch = `${img.title} ${img.url} ${img.sourceUrl || ''}`.toLowerCase();
+        // Don't exclude if it's from a trusted anime source, as they often have tags like "simple background"
+        const trustedSources = ['Safebooru', 'Danbooru', 'Gelbooru', 'Konachan', 'Yande.re', 'Realbooru', 'Rule34', 'Xbooru', 'Pixiv', 'Sankaku'];
+        if (!trustedSources.some(src => img.source.includes(src))) {
+          if (excludedTerms.some(term => textToSearch.includes(term))) return false;
+        }
+      }
+
+      if (filterOrientation !== "All") {
+        if (!img.width || !img.height) return false;
+        const ratio = img.width / img.height;
+        if (filterOrientation === "Portrait" && ratio >= 1) return false;
+        if (filterOrientation === "Landscape" && ratio <= 1) return false;
+        if (filterOrientation === "Square" && (ratio < 0.9 || ratio > 1.1)) return false;
+      }
+      return true;
+    });
+  }, [images, failedImages, filterQuality, filterOrientation, keyword]);
 
   const toggleImageSelection = (id: string) => {
     setSelectedImageIds(prev => {
@@ -665,28 +1239,17 @@ export function ImageDatasetCollector() {
               <Search className="absolute left-4 md:left-6 top-1/2 -translate-y-1/2 w-5 h-5 md:w-6 md:h-6 text-slate-400" />
               <input
                 type="text"
-                value={keyword}
-                onChange={(e) => setKeyword(e.target.value)}
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
                 placeholder="Search tags, characters, or paste URL..."
                 className="w-full pl-12 pr-4 py-4 md:pl-16 md:pr-6 md:py-5 bg-transparent outline-none dark:text-white font-medium text-base md:text-lg rounded-full"
               />
             </div>
             
             <div className="flex flex-wrap sm:flex-nowrap gap-3 w-full lg:w-auto">
-              <select
-                value={searchSource}
-                onChange={(e) => setSearchSource(e.target.value as any)}
-                className="flex-1 sm:flex-none min-w-[130px] px-4 py-4 md:px-6 md:py-5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full outline-none dark:text-white font-medium text-sm md:text-base shadow-sm hover:shadow-md transition-shadow cursor-pointer appearance-none"
-                style={{ backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 1rem center', backgroundSize: '1em', paddingRight: '2.5rem' }}
-              >
-                <option value="All">All Sources</option>
-                <option value="Wallhaven">Wallhaven</option>
-                <option value="Booru">Booru</option>
-              </select>
-
               <button
                 type="submit"
-                disabled={isSearching || !keyword.trim()}
+                disabled={isSearching || !inputValue.trim()}
                 className="w-full sm:w-auto px-6 py-4 md:px-8 md:py-5 bg-indigo-600 text-white font-bold rounded-full hover:bg-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center shadow-lg shadow-indigo-500/20 whitespace-nowrap text-base"
               >
                 {isSearching ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : null}
@@ -695,16 +1258,12 @@ export function ImageDatasetCollector() {
             </div>
           </div>
         </form>
+        
+        <div className="flex justify-center gap-2 mb-8">
+          {/* Search modes removed as per user request */}
+        </div>
 
         <div className="mt-4 flex justify-center gap-4 text-xs text-slate-400">
-          <div className="flex items-center gap-1">
-            <Zap className="w-3 h-3 text-amber-500" />
-            <span>Lightning Fast</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <ImageIcon className="w-3 h-3 text-indigo-500" />
-            <span>High Quality</span>
-          </div>
           <div className="flex items-center gap-1">
             <Layers className="w-3 h-3 text-emerald-500" />
             <span>Dataset Ready</span>
@@ -724,8 +1283,8 @@ export function ImageDatasetCollector() {
                         key={char}
                         type="button"
                         onClick={() => {
-                          setKeyword(char);
-                          handleSearch();
+                          setInputValue(char);
+                          handleSearch(undefined, false, char);
                         }}
                         className="px-3 py-1.5 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 text-xs font-bold rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all border border-slate-200 dark:border-slate-800 hover:border-indigo-200 dark:hover:border-indigo-800 shadow-sm"
                       >
@@ -876,8 +1435,8 @@ export function ImageDatasetCollector() {
 
           {/* Image Grid */}
           <div className="lg:col-span-3">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+              <div className="flex items-center gap-3 flex-wrap">
                 <h2 className="text-xl font-bold text-slate-900 dark:text-white">
                   Search Results ({filteredImages.length})
                 </h2>
@@ -887,41 +1446,51 @@ export function ImageDatasetCollector() {
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={generateDataset}
-                  disabled={isDownloading || selectedImageIds.size === 0}
-                  className="px-4 py-2 bg-indigo-600 text-white text-sm font-bold rounded-xl hover:bg-indigo-700 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
-                >
-                  {isDownloading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                      {downloadProgress}%
-                    </>
-                  ) : (
-                    <>
-                      <Download className="w-4 h-4 mr-2" />
-                      ZIP ({selectedImageIds.size})
-                    </>
-                  )}
-                </button>
-                <button
-                  onClick={downloadIndividually}
-                  disabled={isDownloading || selectedImageIds.size === 0}
-                  className="px-4 py-2 bg-emerald-600 text-white text-sm font-bold rounded-xl hover:bg-emerald-700 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
-                >
-                  {isDownloading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                      {downloadProgress}%
-                    </>
-                  ) : (
-                    <>
-                      <Download className="w-4 h-4 mr-2" />
-                      Individual ({selectedImageIds.size})
-                    </>
-                  )}
-                </button>
+              
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 mr-2">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Selected</span>
+                  <div className="px-3 py-1 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 text-xs font-black rounded-lg border border-indigo-100 dark:border-indigo-800/50">
+                    {selectedImageIds.size}
+                  </div>
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={generateDataset}
+                    disabled={isDownloading || selectedImageIds.size === 0}
+                    className="px-4 py-2 bg-indigo-600 text-white text-sm font-bold rounded-xl hover:bg-indigo-700 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                  >
+                    {isDownloading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                        {downloadProgress}%
+                      </>
+                    ) : (
+                      <>
+                        <Download className="w-4 h-4 mr-2" />
+                        ZIP
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={downloadIndividually}
+                    disabled={isDownloading || selectedImageIds.size === 0}
+                    className="px-4 py-2 bg-emerald-600 text-white text-sm font-bold rounded-xl hover:bg-emerald-700 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                  >
+                    {isDownloading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                        {downloadProgress}%
+                      </>
+                    ) : (
+                      <>
+                        <Download className="w-4 h-4 mr-2" />
+                        Individual
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
             
@@ -941,17 +1510,31 @@ export function ImageDatasetCollector() {
                     alt={img.title}
                     referrerPolicy="no-referrer"
                     className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-                    loading="lazy"
+                    loading={filteredImages.indexOf(img) < 12 ? "eager" : "lazy"}
+                    decoding="async"
                     onError={(e) => {
                       // Fallback for broken thumbnails - try our backend proxy
                       const target = e.target as HTMLImageElement;
-                      if (!target.dataset.triedProxy) {
-                        target.dataset.triedProxy = 'true';
-                        target.src = `https://wsrv.nl/?url=${encodeURIComponent(img.thumbnail)}&output=webp&q=70`;
+                      const triedCount = parseInt(target.dataset.triedCount || '0');
+                      const lowerUrl = img.url.toLowerCase();
+                      const isGif = lowerUrl.endsWith('.gif') || lowerUrl.includes('.gif?') || lowerUrl.includes('giphy.com/media/') || lowerUrl.includes('media.tenor.com/');
+                      
+                      if (triedCount === 0) {
+                        target.dataset.triedCount = '1';
+                        target.src = isGif 
+                          ? `https://wsrv.nl/?url=${encodeURIComponent(img.thumbnail)}&n=-1`
+                          : `https://wsrv.nl/?url=${encodeURIComponent(img.thumbnail)}&output=webp&q=70`;
+                      } else if (triedCount === 1) {
+                        target.dataset.triedCount = '2';
+                        target.src = isGif
+                          ? `https://images.weserv.nl/?url=${encodeURIComponent(img.thumbnail)}`
+                          : `https://images.weserv.nl/?url=${encodeURIComponent(img.thumbnail)}&output=webp&q=70`;
+                      } else if (triedCount === 2) {
+                        target.dataset.triedCount = '3';
+                        target.src = `https://api.allorigins.win/raw?url=${encodeURIComponent(img.thumbnail)}`;
                       } else {
-                        // Don't show random picsum images, just show a broken image placeholder
-                        target.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjY2JkNWUxIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHJlY3QgeD0iMyIgeT0iMyIgd2lkdGg9IjE4IiBoZWlnaHQ9IjE4IiByeD0iMiIgcnk9IjIiPjwvcmVjdD48Y2lyY2xlIGN4PSI4LjUiIGN5PSI4LjUiIHI9IjEuNSI+PC9jaXJjbGU+PHBhdGggZD0iTTIxIDE1bC01LTVMNSAyMSI+PC9wYXRoPjwvc3ZnPg==';
-                        target.className = "w-full h-full object-cover opacity-50 p-8";
+                        // Final fallback: remove the image from the list
+                        setFailedImages(prev => new Set(prev).add(img.id));
                       }
                     }}
                   />
@@ -959,10 +1542,15 @@ export function ImageDatasetCollector() {
                   <div className={`absolute inset-0 bg-indigo-600/10 transition-opacity ${selectedImageIds.has(img.id) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`} />
                   
                   {/* Source Tag */}
-                  <div className="absolute bottom-2 left-2 flex gap-1">
+                  <div className="absolute bottom-2 left-2 flex flex-wrap gap-1">
                     <span className="px-1.5 py-0.5 bg-black/60 text-white text-[8px] font-bold rounded backdrop-blur-md">
                       {img.source}
                     </span>
+                    {(img.url.toLowerCase().endsWith('.gif') || img.url.toLowerCase().includes('.gif?') || img.url.toLowerCase().includes('giphy.com/media/') || img.url.toLowerCase().includes('media.tenor.com/')) && (
+                      <span className="px-1.5 py-0.5 bg-amber-500/80 text-white text-[8px] font-bold rounded backdrop-blur-md">
+                        GIF
+                      </span>
+                    )}
                     {(img as any).type && (
                       <span className={`px-1.5 py-0.5 text-white text-[8px] font-bold rounded backdrop-blur-md ${
                         (img as any).type === 'Cosplay' ? 'bg-pink-600/80' : 

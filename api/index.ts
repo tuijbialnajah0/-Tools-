@@ -130,13 +130,9 @@ app.get("/api/proxy-booru", async (req, res) => {
     }
     
     const text = await response.text();
-    try {
-      const data = JSON.parse(text);
-      res.json(data);
-    } catch (e) {
-      console.error("Failed to parse booru response as JSON:", text.substring(0, 100));
-      res.status(500).json({ error: "Invalid response format from Booru" });
-    }
+    const contentType = response.headers.get("content-type") || "application/json";
+    res.setHeader("Content-Type", contentType);
+    res.send(text);
   } catch (error: any) {
     console.error("Proxy booru error:", error);
     res.status(500).json({ error: error.message });
@@ -328,53 +324,117 @@ app.get("/api/image-proxy", async (req, res) => {
     const imageUrl = req.query.url as string;
     if (!imageUrl) return res.status(400).send("URL is required");
 
-    const fetchWithHeaders = async (headers: any) => {
-      return await fetch(imageUrl, { headers });
+    // Clean URL - handle potential double encoding
+    let targetUrl = imageUrl;
+    try {
+      // If it's already encoded, decode it once to get a clean version, 
+      // then we'll let fetch handle the encoding or use a clean URL object
+      if (targetUrl.includes('%')) {
+        targetUrl = decodeURIComponent(targetUrl);
+      }
+      targetUrl = new URL(targetUrl).href;
+    } catch (e) {
+      targetUrl = imageUrl; // Fallback to original if parsing fails
+    }
+
+    const fetchWithHeaders = async (url: string, headers: any) => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      try {
+        const response = await fetch(url, { 
+          headers,
+          signal: controller.signal
+        });
+        return response;
+      } finally {
+        clearTimeout(timeoutId);
+      }
     };
 
     const baseHeaders = {
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
       "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+      "Accept-Language": "en-US,en;q=0.9",
+    };
+
+    let response: Response | null = null;
+    let lastError: any = null;
+
+    const tryStrategy = async (url: string, headers: any) => {
+      try {
+        const res = await fetchWithHeaders(url, headers);
+        return res;
+      } catch (e) {
+        lastError = e;
+        return null;
+      }
     };
 
     // Strategy 1: With Referer
-    let response = await fetchWithHeaders({
+    response = await tryStrategy(targetUrl, {
       ...baseHeaders,
-      "Referer": new URL(imageUrl).origin
+      "Referer": new URL(targetUrl).origin
     });
 
     // Strategy 2: Without Referer
-    if (!response.ok && response.status === 403) {
-      response = await fetchWithHeaders(baseHeaders);
+    if (!response || !response.ok) {
+      const nextRes = await tryStrategy(targetUrl, baseHeaders);
+      if (nextRes) response = nextRes;
     }
 
-    // Strategy 3: Empty Referer
-    if (!response.ok && response.status === 403) {
-      response = await fetchWithHeaders({
+    // Strategy 3: Different User-Agent (Mobile)
+    if (!response || !response.ok) {
+      const nextRes = await tryStrategy(targetUrl, {
         ...baseHeaders,
-        "Referer": ""
+        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1",
+        "Referer": new URL(targetUrl).origin
       });
+      if (nextRes) response = nextRes;
     }
 
-    // Strategy 4: Different User-Agent
-    if (!response.ok && response.status === 403) {
-      response = await fetchWithHeaders({
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.1 Safari/605.1.15",
-        "Accept": "image/*,*/*;q=0.8",
-        "Referer": new URL(imageUrl).origin
-      });
+    // Strategy 4: Fallback to public proxy (weserv.nl)
+    if (!response || !response.ok) {
+      try {
+        console.log(`Trying weserv.nl fallback for ${targetUrl}`);
+        const proxyUrl = `https://wsrv.nl/?url=${encodeURIComponent(targetUrl)}`;
+        const nextRes = await fetch(proxyUrl, {
+          headers: { "User-Agent": baseHeaders["User-Agent"] }
+        });
+        if (nextRes.ok) response = nextRes;
+      } catch (e) {
+        lastError = e;
+      }
     }
 
-    // Strategy 5: Google Bot User-Agent
-    if (!response.ok && response.status === 403) {
-      response = await fetchWithHeaders({
-        "User-Agent": "Googlebot-Image/1.0",
-        "Accept": "image/*,*/*;q=0.8"
-      });
+    // Strategy 5: Fallback to another public proxy (corsproxy.io)
+    if (!response || !response.ok) {
+      try {
+        console.log(`Trying corsproxy.io fallback for ${targetUrl}`);
+        const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+        const nextRes = await fetch(proxyUrl);
+        if (nextRes.ok) response = nextRes;
+      } catch (e) {
+        lastError = e;
+      }
     }
 
-    if (!response.ok) {
-      return res.status(response.status).send(`Failed to fetch image: ${response.status}`);
+    // Strategy 6: Fallback to allorigins
+    if (!response || !response.ok) {
+      try {
+        console.log(`Trying allorigins fallback for ${targetUrl}`);
+        const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
+        const nextRes = await fetch(proxyUrl);
+        if (nextRes.ok) response = nextRes;
+      } catch (e) {
+        lastError = e;
+      }
+    }
+
+    if (!response || !response.ok) {
+      const status = response ? response.status : "Unknown";
+      const errorMsg = lastError ? lastError.message : "Failed to fetch";
+      console.warn(`All proxy strategies failed for ${targetUrl}. Status: ${status}, Error: ${errorMsg}`);
+      return res.status(response ? response.status : 500).send(`Failed to fetch image: ${status}. ${errorMsg}`);
     }
 
     const contentType = response.headers.get("content-type") || "image/jpeg";
@@ -389,7 +449,7 @@ app.get("/api/image-proxy", async (req, res) => {
       res.status(500).send("Empty response body");
     }
   } catch (error: any) {
-    console.warn(`Image proxy network error for ${req.query.url}:`, error.message);
+    console.warn(`Image proxy critical error for ${req.query.url}:`, error.message);
     res.status(500).send("Failed to load image");
   }
 });

@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import { useTools } from "../context/ToolContext";
 import { ToolManager } from "./ToolManager";
 import { ThemeEffects } from "./ThemeEffects";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard,
   Wrench,
@@ -118,19 +119,128 @@ export function Layout() {
         </div>
       </header>
 
-      {/* Sidebar Overlay */}
-      {isSidebarOpen && (
-        <div
-          className="fixed inset-0 bg-slate-900/50 z-40 md:hidden backdrop-blur-md"
-          onClick={closeSidebar}
-        />
-      )}
+      {/* Mobile Menu Popup */}
+      <AnimatePresence>
+        {isSidebarOpen && (
+          <div className="fixed inset-0 z-[100] md:hidden flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm"
+              onClick={closeSidebar}
+            />
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+              className="relative w-full max-w-sm glass border border-slate-200/50 dark:border-slate-800/50 rounded-[2rem] shadow-2xl overflow-hidden flex flex-col"
+            >
+              <div className="p-6 border-b border-slate-200/50 dark:border-slate-800/50 flex items-center justify-between bg-white/50 dark:bg-slate-900/50">
+                <div className="flex items-center">
+                  <Wrench className="w-6 h-6 text-indigo-600 mr-2" />
+                  <span className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">𝙱𝙹𝙴 ~ Menu</span>
+                </div>
+                <button
+                  onClick={closeSidebar}
+                  className="p-2 text-slate-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition-all"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
 
-      {/* Sidebar */}
+              <nav className="p-6 space-y-2 max-h-[60vh] overflow-y-auto custom-scrollbar">
+                {navItems.map((item) => {
+                  const isActive = location.pathname === item.href;
+                  return (
+                    <Link
+                      key={item.name}
+                      to={item.href}
+                      onClick={closeSidebar}
+                      className={cn(
+                        "flex items-center px-4 py-3 text-sm font-bold rounded-2xl transition-all",
+                        isActive
+                          ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
+                          : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800",
+                      )}
+                    >
+                      <item.icon
+                        className={cn(
+                          "w-5 h-5 mr-3",
+                          isActive ? "text-white" : "text-slate-400 dark:text-slate-500",
+                        )}
+                      />
+                      {item.name}
+                    </Link>
+                  );
+                })}
+
+                {runningTools.length > 0 && (
+                  <>
+                    <div className="pt-6 pb-2">
+                      <p className="px-4 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest flex items-center">
+                        <Activity className="w-3 h-3 mr-1.5" />
+                        Running Services
+                      </p>
+                    </div>
+                    {runningTools.map((tool) => {
+                      const isActive = location.pathname === `/${tool.path}`;
+                      const Icon = TOOL_ICONS[tool.path] || Wrench;
+                      return (
+                        <div key={tool.id} className="group relative">
+                          <Link
+                            to={`/${tool.path}`}
+                            onClick={closeSidebar}
+                            className={cn(
+                              "flex items-center px-4 py-3 text-sm font-bold rounded-2xl transition-all pr-12",
+                              isActive
+                                ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/20"
+                                : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800",
+                            )}
+                          >
+                            <Icon
+                              className={cn(
+                                "w-5 h-5 mr-3",
+                                isActive ? "text-white" : "text-slate-400 dark:text-slate-500",
+                              )}
+                            />
+                            <span className="truncate">{tool.name}</span>
+                          </Link>
+                          <button
+                            onClick={(e) => handleCloseTool(e, tool.id, tool.path)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-red-500 transition-all"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
+
+                <div className="pt-6">
+                  <a
+                    href={reportBugUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center px-4 py-3 text-sm font-bold rounded-2xl transition-all text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 border border-red-100 dark:border-red-900/30"
+                    onClick={closeSidebar}
+                  >
+                    <AlertCircle className="w-5 h-5 mr-3" />
+                    Report Bug
+                  </a>
+                </div>
+              </nav>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Desktop Sidebar */}
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 w-64 glass border-r border-slate-200/50 dark:border-slate-800/50 flex flex-col z-50 transition-transform duration-300 md:translate-x-0 md:static md:h-screen",
-          isSidebarOpen ? "translate-x-0" : "-translate-x-full",
+          "hidden md:flex w-64 glass border-r border-slate-200/50 dark:border-slate-800/50 flex-col h-screen sticky top-0",
         )}
       >
         <div className="h-16 hidden md:flex items-center justify-between px-6 border-b border-slate-200/50 dark:border-slate-800/50">
@@ -235,7 +345,7 @@ export function Layout() {
         <div className="p-4 border-t border-slate-200 dark:border-slate-800">
           <div className="text-center">
             <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500 uppercase tracking-widest">
-              Premium Toolbox
+              𝙱𝙹𝙴 ~ Tools
             </span>
           </div>
         </div>

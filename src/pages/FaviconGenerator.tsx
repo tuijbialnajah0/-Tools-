@@ -26,7 +26,7 @@ export function FaviconGenerator() {
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      const newImages: ProcessedImage[] = Array.from(e.target.files).map((file) => ({
+      const newImages: ProcessedImage[] = Array.from(e.target.files as FileList).map((file) => ({
         id: Math.random().toString(36).substring(7),
         file,
         preview: URL.createObjectURL(file),

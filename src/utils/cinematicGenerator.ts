@@ -99,7 +99,7 @@ export const autoFormatToMarkdown = (text: string): string => {
   return formattedText;
 };
 
-export const generateCinematicHTML = (title: string, markdown: string) => {
+export const generateCinematicHTML = (title: string, markdown: string, themeIndex?: number) => {
   const sections = markdown.split(/^## /m).filter(s => s.trim());
   const heroTitle = title.replace('.pdf', '');
   
@@ -165,6 +165,51 @@ export const generateCinematicHTML = (title: string, markdown: string) => {
       bgColor: 0xff00ff
     },
     {
+      name: 'Royal Velvet',
+      colors: {
+        ink: '#ffffff',
+        paper: '#1a0b2e',
+        accent: '#ffd700',
+        accent2: '#ff8c00',
+        border: '#3d1c5c',
+        card: '#2d144d',
+        coverText: '#ffd700',
+        coverBg: '#1a0b2e'
+      },
+      bgType: 'spheres',
+      bgColor: 0xffd700
+    },
+    {
+      name: 'Sakura Blossom',
+      colors: {
+        ink: '#4a2c2a',
+        paper: '#fff5f7',
+        accent: '#ff85a2',
+        accent2: '#ffb7c5',
+        border: '#ffe4e9',
+        card: '#ffffff',
+        coverText: '#ffffff',
+        coverBg: '#ff85a2'
+      },
+      bgType: 'particles',
+      bgColor: 0xff85a2
+    },
+    {
+      name: 'Oceanic Depth',
+      colors: {
+        ink: '#f0f9ff',
+        paper: '#082f49',
+        accent: '#0ea5e9',
+        accent2: '#22d3ee',
+        border: '#0c4a6e',
+        card: '#075985',
+        coverText: '#0ea5e9',
+        coverBg: '#082f49'
+      },
+      bgType: 'waves',
+      bgColor: 0x0ea5e9
+    },
+    {
       name: 'High Contrast',
       colors: {
         ink: '#000000',
@@ -181,7 +226,9 @@ export const generateCinematicHTML = (title: string, markdown: string) => {
     }
   ];
 
-  const theme = themes[Math.floor(Math.random() * themes.length)];
+  const theme = (themeIndex !== undefined && themeIndex >= 0 && themeIndex < themes.length) 
+    ? themes[themeIndex] 
+    : themes[Math.floor(Math.random() * themes.length)];
   
   const sectionHTML = sections.map((section, index) => {
     const lines = section.split('\n');
@@ -278,18 +325,21 @@ body{font-family:'DM Sans',sans-serif;background:var(--paper);color:var(--ink);f
 /* Table Styles */
 .table-container {
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   margin: 32px 0;
   border-radius: 20px;
   border: 2px solid var(--border);
   background: var(--card);
   max-width: 100%;
   box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+  position: relative;
 }
 .cinematic-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 14px;
   text-align: left;
+  min-width: 800px; /* Increased for better visibility */
 }
 .cinematic-table th {
   background: var(--accent);
@@ -300,12 +350,14 @@ body{font-family:'DM Sans',sans-serif;background:var(--paper);color:var(--ink);f
   font-size: 11px;
   letter-spacing: 1.5px;
   font-weight: 700;
+  white-space: nowrap; /* Prevent header wrapping */
 }
 .cinematic-table td {
   padding: 16px 20px;
   border-bottom: 1px solid var(--border);
   color: var(--ink);
   font-weight: 500;
+  min-width: 120px; /* Ensure columns have enough space */
 }
 .cinematic-table tr:last-child td {
   border-bottom: none;

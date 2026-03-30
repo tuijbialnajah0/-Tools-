@@ -10,6 +10,7 @@ export default function ImageColourizer() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasApiKey, setHasApiKey] = useState(false);
+  const [mode, setMode] = useState<'ai' | 'local'>('ai');
 
   React.useEffect(() => {
     const checkKey = async () => {
@@ -48,11 +49,68 @@ export default function ImageColourizer() {
     }
   };
 
+  const localColorize = async (imgSrc: string): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(imgSrc);
+          return;
+        }
+
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.drawImage(img, 0, 0);
+
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imageData.data;
+
+        // Basic "Local" Colorization Algorithm (Enhanced Sepia/Tinting)
+        for (let i = 0; i < data.length; i += 4) {
+          const r = data[i];
+          const g = data[i + 1];
+          const b = data[i + 2];
+
+          const avg = (r + g + b) / 3;
+
+          if (avg > 128) {
+            data[i] = avg + (avg - 128) * 0.2;
+            data[i + 1] = avg + (avg - 128) * 0.1;
+            data[i + 2] = avg - (avg - 128) * 0.1;
+          } else {
+            data[i] = avg - (128 - avg) * 0.1;
+            data[i + 1] = avg;
+            data[i + 2] = avg + (128 - avg) * 0.1;
+          }
+        }
+
+        ctx.putImageData(imageData, 0, 0);
+        resolve(canvas.toDataURL('image/png'));
+      };
+      img.src = imgSrc;
+    });
+  };
+
   const colourizeImage = async () => {
     if (!originalImage) return;
 
     setIsProcessing(true);
     setError(null);
+
+    if (mode === 'local') {
+      try {
+        const result = await localColorize(originalImage);
+        setColourizedImage(result);
+      } catch (err: any) {
+        setError("Local processing failed. Please try AI mode.");
+      } finally {
+        setIsProcessing(false);
+      }
+      return;
+    }
 
     try {
       let ai = getGenAI();
@@ -173,7 +231,7 @@ export default function ImageColourizer() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 pb-12">
-      <div className="flex items-center gap-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
             <ImageIcon className="w-8 h-8 text-indigo-600" />
@@ -182,6 +240,31 @@ export default function ImageColourizer() {
           <p className="text-slate-500 dark:text-slate-400">
             Bring old black and white photos to life with AI
           </p>
+        </div>
+
+        <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl w-fit">
+          <button
+            onClick={() => setMode('ai')}
+            className={`px-4 py-2 text-xs font-bold rounded-lg transition-all flex items-center gap-2 ${
+              mode === 'ai' 
+                ? "bg-white dark:bg-slate-700 text-indigo-600 shadow-sm" 
+                : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            AI Mode (Online)
+          </button>
+          <button
+            onClick={() => setMode('local')}
+            className={`px-4 py-2 text-xs font-bold rounded-lg transition-all flex items-center gap-2 ${
+              mode === 'local' 
+                ? "bg-white dark:bg-slate-700 text-indigo-600 shadow-sm" 
+                : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+            }`}
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            Local Mode (Offline)
+          </button>
         </div>
       </div>
 
@@ -289,9 +372,11 @@ export default function ImageColourizer() {
           How it works
         </h3>
         <p className="text-sm text-indigo-800/70 dark:text-indigo-400/70 leading-relaxed">
-          Our AI analyzes the textures, lighting, and objects in your black and white photo to predict the original colors. 
-          It uses advanced neural networks to apply realistic skin tones, natural landscapes, and vibrant clothing colors.
-          For best results, use high-resolution photos with clear details.
+          {mode === 'ai' ? (
+            "Our AI analyzes the textures, lighting, and objects in your black and white photo to predict the original colors. It uses advanced neural networks to apply realistic skin tones, natural landscapes, and vibrant clothing colors."
+          ) : (
+            "Local mode uses your browser's processing power to apply intelligent color filters. It's faster and works offline, though the results may be less precise than the AI mode. This is perfect for quick restorations without internet."
+          )}
         </p>
       </div>
 

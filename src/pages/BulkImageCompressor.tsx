@@ -42,7 +42,7 @@ export default function BulkImageCompressor() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
+    const files = Array.from(e.target.files || []) as File[];
     if (files.length > 0) {
       const newImages: ImageItem[] = files
         .filter(file => file.type.startsWith('image/'))

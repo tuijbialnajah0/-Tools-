@@ -6,6 +6,79 @@ import CropWorker from "../workers/cropWorker?worker";
 
 const STICKERS_PER_PACK = 30;
 
+const Step1Design = () => (
+  <div className="w-full max-w-xs aspect-[4/3] bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 flex flex-col gap-3 overflow-hidden relative mx-auto">
+    <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-2">
+      <div className="w-20 h-3 bg-slate-300 dark:bg-slate-600 rounded" />
+      <Download className="w-4 h-4 text-slate-400" />
+    </div>
+    {[1, 2, 3].map(i => (
+      <div key={i} className={`flex items-center justify-between p-2 rounded-lg ${i === 1 ? 'bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-800' : 'bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800'}`}>
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 bg-slate-200 dark:bg-slate-700 rounded flex items-center justify-center">
+            <Briefcase className="w-4 h-4 text-slate-400" />
+          </div>
+          <div className="w-24 h-2 bg-slate-200 dark:bg-slate-700 rounded" />
+        </div>
+        <div className="relative">
+          <div className={`w-6 h-6 flex flex-col items-center justify-center gap-0.5 rounded-full ${i === 1 ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}>
+            <div className="w-1 h-1 bg-current rounded-full" />
+            <div className="w-1 h-1 bg-current rounded-full" />
+            <div className="w-1 h-1 bg-current rounded-full" />
+          </div>
+          {i === 1 && (
+            <div className="absolute top-8 right-0 bg-white dark:bg-slate-900 shadow-xl border border-slate-200 dark:border-slate-700 rounded-lg p-2 z-10 w-24 animate-in fade-in slide-in-from-top-2">
+              <div className="flex items-center gap-2 p-1 hover:bg-slate-50 dark:hover:bg-slate-800 rounded text-[10px] font-bold text-indigo-600">
+                <Download className="w-3 h-3" /> Share
+              </div>
+              <div className="w-full h-px bg-slate-100 dark:bg-slate-800 my-1" />
+              <div className="w-16 h-2 bg-slate-100 dark:bg-slate-700 rounded m-1" />
+            </div>
+          )}
+        </div>
+      </div>
+    ))}
+  </div>
+);
+
+const Step2Design = () => (
+  <div className="w-full max-w-xs aspect-[4/3] bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-6 flex flex-col items-center justify-center gap-6 mx-auto">
+    <div className="grid grid-cols-3 gap-4 w-full">
+      {[1, 2, 3, 4, 5, 6].map(i => (
+        <div key={i} className="flex flex-col items-center gap-2">
+          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shadow-sm ${i === 2 ? 'bg-green-500 text-white ring-4 ring-green-100 dark:ring-green-900/30 scale-110' : 'bg-white dark:bg-slate-900 text-slate-300'}`}>
+            {i === 2 ? <MessageCircle className="w-6 h-6" /> : <div className="w-6 h-6 bg-current rounded-md opacity-20" />}
+          </div>
+          <div className={`w-10 h-1.5 rounded ${i === 2 ? 'bg-green-500' : 'bg-slate-200 dark:bg-slate-700'}`} />
+        </div>
+      ))}
+    </div>
+    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Select Sticker Maker</p>
+  </div>
+);
+
+const Step3Design = () => (
+  <div className="w-full max-w-xs aspect-[4/3] bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-6 flex flex-col gap-4 mx-auto">
+    <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-700 shadow-sm flex items-center gap-4">
+      <div className="w-12 h-12 bg-green-100 dark:bg-green-900/30 rounded-xl flex items-center justify-center">
+        <MessageCircle className="w-6 h-6 text-green-600" />
+      </div>
+      <div className="flex-1">
+        <div className="w-24 h-3 bg-slate-200 dark:bg-slate-700 rounded mb-2" />
+        <div className="w-16 h-2 bg-slate-100 dark:bg-slate-800 rounded" />
+      </div>
+    </div>
+    <div className="mt-auto space-y-3">
+      <div className="w-full py-3 bg-green-600 text-white rounded-xl font-bold text-xs flex items-center justify-center shadow-lg shadow-green-200 dark:shadow-none animate-pulse">
+        Add to WhatsApp
+      </div>
+      <div className="w-full py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-400 rounded-xl font-bold text-xs flex items-center justify-center">
+        Cancel
+      </div>
+    </div>
+  </div>
+);
+
 interface StickerFile {
   id: string;
   file: File;
@@ -309,7 +382,8 @@ export function WhatsappSCreate() {
   const handleDownloadPack = (url: string, name: string) => {
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${(name.trim() || 'sticker-pack').replace(/[^a-z0-9]/gi, '_').toLowerCase()}.wastickers`;
+    const timestamp = Date.now();
+    a.download = `${(name.trim() || 'sticker-pack').replace(/[^a-z0-9]/gi, '_').toLowerCase()}_${timestamp}.wastickers`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -656,9 +730,9 @@ export function WhatsappSCreate() {
                   <div className="flex-shrink-0 w-8 h-8 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-full flex items-center justify-center font-bold mr-3 mt-0.5">
                     1
                   </div>
-                  <div className="text-slate-600 dark:text-slate-400 text-sm space-y-2 pt-1.5">
+                  <div className="text-slate-600 dark:text-slate-400 text-sm space-y-4 pt-1.5">
                     <p>• Go to downloads ↓</p>
-                    <img src="https://files.catbox.moe/ymxrw2.jpg" alt="Step 1" className="rounded-lg border border-slate-200 dark:border-slate-700 w-full max-w-xs" referrerPolicy="no-referrer" />
+                    <Step1Design />
                     <p>• Click on 3 dot option</p>
                     <p>• Click on share button</p>
                   </div>
@@ -668,8 +742,8 @@ export function WhatsappSCreate() {
                   <div className="flex-shrink-0 w-8 h-8 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-full flex items-center justify-center font-bold mr-3 mt-0.5">
                     2
                   </div>
-                  <div className="text-slate-600 dark:text-slate-400 text-sm space-y-2 pt-1.5">
-                    <img src="https://files.catbox.moe/anw68v.jpg" alt="Step 2" className="rounded-lg border border-slate-200 dark:border-slate-700 w-full max-w-xs" referrerPolicy="no-referrer" />
+                  <div className="text-slate-600 dark:text-slate-400 text-sm space-y-4 pt-1.5">
+                    <Step2Design />
                     <p>• Select any sticker maker app</p>
                   </div>
                 </div>
@@ -678,9 +752,9 @@ export function WhatsappSCreate() {
                   <div className="flex-shrink-0 w-8 h-8 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-full flex items-center justify-center font-bold mr-3 mt-0.5">
                     3
                   </div>
-                  <div className="text-slate-600 dark:text-slate-400 text-sm space-y-2 pt-1.5">
+                  <div className="text-slate-600 dark:text-slate-400 text-sm space-y-4 pt-1.5">
                     <p>• Add your sticker pack to library</p>
-                    <img src="https://files.catbox.moe/gqap6u.jpg" alt="Step 3" className="rounded-lg border border-slate-200 dark:border-slate-700 w-full max-w-xs" referrerPolicy="no-referrer" />
+                    <Step3Design />
                     <p>• Later you can add to WhatsApp Messenger / Whatsapp Business</p>
                   </div>
                 </div>

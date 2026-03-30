@@ -6,6 +6,7 @@ import JSZip from "jszip";
 interface ImageData {
   id: string;
   url: string;
+  thumbnail?: string;
   source: string;
 }
 
@@ -111,6 +112,8 @@ export function WASGenerator() {
           seenHashes.add(hash);
           if (fileName) seenHashes.add(fileName);
           results.push(item);
+          // Update images state incrementally for better UX
+          setImages([...results]);
         }
       };
 
@@ -141,8 +144,14 @@ export function WASGenerator() {
             let idx = 0;
             while ((match = regex.exec(text)) !== null) {
               const url = match[1].replace(/&amp;/g, '&');
+              const thumbnail = match[2].replace(/&amp;/g, '&');
               if (url.includes('pinimg.com') || idx < 15) {
-                addResult({ id: `pin-${idx}-${Math.random()}`, url, source: 'Pinterest' });
+                addResult({ 
+                  id: `pin-${idx}-${Math.random()}`, 
+                  url, 
+                  thumbnail,
+                  source: 'Pinterest' 
+                });
                 idx++;
               }
             }
@@ -160,7 +169,12 @@ export function WASGenerator() {
           if (res && res.ok) {
             const whData = await res.json();
             whData.data?.forEach((item: any) => {
-              addResult({ id: `wh-${item.id}`, url: item.path, source: 'Wallhaven' });
+              addResult({ 
+                id: `wh-${item.id}`, 
+                url: item.path, 
+                thumbnail: item.thumbs?.large || item.thumbs?.original || item.path,
+                source: 'Wallhaven' 
+              });
             });
           }
           // Also try aesthetic query
@@ -168,7 +182,12 @@ export function WASGenerator() {
           if (res2 && res2.ok) {
             const whData = await res2.json();
             whData.data?.forEach((item: any) => {
-              addResult({ id: `wh2-${item.id}`, url: item.path, source: 'Wallhaven' });
+              addResult({ 
+                id: `wh2-${item.id}`, 
+                url: item.path, 
+                thumbnail: item.thumbs?.large || item.thumbs?.original || item.path,
+                source: 'Wallhaven' 
+              });
             });
           }
         } catch (err) { console.error("Wallhaven failed", err); }
@@ -189,7 +208,13 @@ export function WASGenerator() {
                   data.data?.children?.forEach((child: any) => {
                     const post = child.data;
                     if (post.url && (post.url.endsWith('.jpg') || post.url.endsWith('.png') || post.url.endsWith('.jpeg'))) {
-                      addResult({ id: `rd-${post.id}`, url: post.url, source: `Reddit r/${sub}` });
+                      const thumbnail = post.preview?.images?.[0]?.resolutions?.[0]?.url?.replace(/&amp;/g, '&') || post.thumbnail;
+                      addResult({ 
+                        id: `rd-${post.id}`, 
+                        url: post.url, 
+                        thumbnail: thumbnail && thumbnail.startsWith('http') ? thumbnail : post.url,
+                        source: `Reddit r/${sub}` 
+                      });
                     }
                   });
                 } catch (jsonErr) {
@@ -216,7 +241,13 @@ export function WASGenerator() {
             let idx = 0;
             while ((match = regex.exec(text)) !== null) {
               const url = match[1].replace(/&amp;/g, '&');
-              addResult({ id: `google-bing-${idx}-${Math.random()}`, url, source: 'Google Dataset' });
+              const thumbnail = match[2].replace(/&amp;/g, '&');
+              addResult({ 
+                id: `google-bing-${idx}-${Math.random()}`, 
+                url, 
+                thumbnail,
+                source: 'Google Dataset' 
+              });
               idx++;
             }
           }
@@ -604,7 +635,7 @@ export function WASGenerator() {
                   }`}
                 >
                   <img 
-                    src={img.url} 
+                    src={img.thumbnail || img.url} 
                     alt="Preview" 
                     className="w-full h-full object-cover"
                     referrerPolicy="no-referrer"
@@ -613,7 +644,7 @@ export function WASGenerator() {
                       const target = e.target as HTMLImageElement;
                       if (!target.dataset.triedProxy) {
                         target.dataset.triedProxy = 'true';
-                        target.src = `https://corsproxy.io/?${encodeURIComponent(img.url)}`;
+                        target.src = `https://corsproxy.io/?${encodeURIComponent(img.thumbnail || img.url)}`;
                       } else {
                         target.src = 'https://via.placeholder.com/400?text=Image+Not+Found';
                       }

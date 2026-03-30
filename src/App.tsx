@@ -34,11 +34,22 @@ import { SmartCodeGenerator } from "./pages/SmartCodeGenerator";
 import { PdfConverter } from "./pages/PdfConverter";
 import { WhatsappSCreate } from "./pages/WhatsappSCreate";
 import { ImageDatasetCollector } from "./pages/ImageDatasetCollector";
+import ImageUpscaler from "./pages/ImageUpscaler";
 import { WASGenerator } from "./pages/WASGenerator";
 import { PFPAnima } from "./pages/PFPAnima";
 import ImageColourizer from "./pages/ImageColourizer";
 import ApiTester from "./pages/ApiTester";
 import AudioVisualiser from "./pages/AudioVisualiser";
+import EmojiStickerPacker from "./pages/EmojiStickerPacker";
+import { FancyFontGenerator } from "./pages/FancyFontGenerator";
+import { PdfToImage } from "./pages/PdfToImage";
+import { VideoCompressor } from "./pages/VideoCompressor";
+import VideoStoryboard from "./pages/VideoStoryboard";
+import { YouTubeMultiView } from "./pages/YouTubeMultiView";
+import BulkImageRotator from "./pages/BulkImageRotator";
+import BulkMetadataRemover from "./pages/BulkMetadataRemover";
+import { PFPAnimaRemastered } from "./pages/PFPAnimaRemastered";
+import DuplicateImageFinder from "./pages/DuplicateImageFinder";
 
 export default function App() {
   return (
@@ -55,8 +66,10 @@ export default function App() {
             <Route path="pdf-converter" element={<PdfConverter />} />
             <Route path="whatsapp-s-create" element={<WhatsappSCreate />} />
             <Route path="image-dataset-collector" element={<ImageDatasetCollector />} />
+            <Route path="image-upscaler" element={<ImageUpscaler />} />
             <Route path="wa-s-generator" element={<WASGenerator />} />
             <Route path="pfp-anima" element={<PFPAnima />} />
+            <Route path="pfp-anima-remastered" element={<PFPAnimaRemastered />} />
             <Route path="image-colourizer" element={<ImageColourizer />} />
             <Route path="notes-create" element={<NotesCreate />} />
             <Route path="notes-viewer" element={<NotesViewer />} />
@@ -76,6 +89,15 @@ export default function App() {
             <Route path="emoji-art" element={<EmojiArtGenerator />} />
             <Route path="api-tester" element={<ApiTester />} />
             <Route path="audio-visualiser" element={<AudioVisualiser />} />
+            <Route path="emoji-sticker-packer" element={<EmojiStickerPacker />} />
+            <Route path="fancy-font-generator" element={<FancyFontGenerator />} />
+            <Route path="pdf-to-image" element={<PdfToImage />} />
+            <Route path="video-compressor" element={<VideoCompressor />} />
+            <Route path="video-storyboard" element={<VideoStoryboard />} />
+            <Route path="youtube-multiview" element={<YouTubeMultiView />} />
+            <Route path="bulk-image-rotator" element={<BulkImageRotator />} />
+            <Route path="bulk-metadata-remover" element={<BulkMetadataRemover />} />
+            <Route path="duplicate-image-finder" element={<DuplicateImageFinder />} />
             
             <Route path="text-viewer" element={<TextViewer />} />
             

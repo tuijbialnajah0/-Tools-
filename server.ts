@@ -1,6 +1,6 @@
 import express from "express";
-import { createServer as createViteServer } from "vite";
 import path from "path";
+import fs from "fs";
 import app from "./api/index";
 
 async function startServer() {
@@ -12,18 +12,50 @@ async function startServer() {
     res.json({ status: "ok", mode: process.env.NODE_ENV });
   });
 
+  const distPath = path.resolve(process.cwd(), 'dist');
+  const indexPath = path.resolve(distPath, 'index.html');
+  const isProduction = process.env.NODE_ENV === "production";
+
+  console.log(`Static assets path: ${distPath}`);
+  console.log(`Index file path: ${indexPath}`);
+
   // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
+  if (!isProduction && fs.existsSync(path.join(process.cwd(), 'vite.config.ts'))) {
+    try {
+      const { createServer: createViteServer } = await import("vite");
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      });
+      app.use(vite.middlewares);
+    } catch (e: any) {
+      console.warn("Vite not found, falling back to static serving.", e.message);
+      app.use(express.static(distPath));
+      app.get('(.*)', (req, res) => {
+        if (fs.existsSync(indexPath)) {
+          res.sendFile(indexPath);
+        } else {
+          res.status(404).send(`App is building or build not found. Index path: ${indexPath}`);
+        }
+      });
+    }
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
-    app.get('*all', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+    app.get('(.*)', (req, res) => {
+      if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath, (err) => {
+          if (err) {
+            console.error(`Error sending index.html: ${err.message}`);
+            if (!res.headersSent) {
+              res.status(500).send(`Internal Server Error: Could not serve index.html. Path: ${indexPath}`);
+            }
+          }
+        });
+      } else {
+        const files = fs.existsSync(distPath) ? fs.readdirSync(distPath) : 'dist directory does not exist';
+        console.error(`Index file not found at ${indexPath}. Files in dist: ${JSON.stringify(files)}`);
+        res.status(404).send(`App is building or build not found. Please wait or run 'npm run build'. Path: ${indexPath}`);
+      }
     });
   }
 
