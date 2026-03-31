@@ -2,6 +2,10 @@ import express from "express";
 import cors from "cors";
 import { Readable } from "stream";
 
+// Image proxy to handle sites with potentially expired/invalid certificates
+// Note: Bypassing SSL verification is disabled to ensure applet sharing compatibility.
+// process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+
 const app = express();
 
 app.use(cors());
@@ -223,17 +227,38 @@ app.get("/api/search-duckduckgo", async (req, res) => {
       var vqd = vqdMatch[1];
     }
 
-    // 2. Search for images
-    const searchUrl = `https://duckduckgo.com/i.js?l=us-en&o=json&q=${encodeURIComponent(query)}&vqd=${vqd}&f=,,,`;
-    const searchRes = await fetch(searchUrl, {
-      headers: { 
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-        "Referer": "https://duckduckgo.com/"
-      }
-    });
-    const data = await searchRes.json();
+    // 2. Search for images (fetch multiple pages)
+    let searchUrl = `https://duckduckgo.com/i.js?l=us-en&o=json&q=${encodeURIComponent(query)}&vqd=${vqd}&f=,,,`;
+    let allResults: any[] = [];
+    const maxPages = 4; // Fetch up to ~400 images
     
-    const results = (data.results || []).map((r: any) => ({
+    for (let i = 0; i < maxPages; i++) {
+      if (!searchUrl) break;
+      
+      const searchRes = await fetch(searchUrl, {
+        headers: { 
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+          "Referer": "https://duckduckgo.com/"
+        }
+      });
+      
+      if (!searchRes.ok) break;
+      
+      const data = await searchRes.json();
+      allResults = allResults.concat(data.results || []);
+      
+      if (data.next) {
+        const nextPath = data.next.startsWith('/') ? data.next : `/${data.next}`;
+        searchUrl = `https://duckduckgo.com${nextPath}`;
+      } else {
+        break;
+      }
+    }
+    
+    const blockedDomains = ['pfphub.com', 'pfptown.com'];
+    const results = allResults
+      .filter((r: any) => !blockedDomains.some(domain => r.image?.includes(domain)))
+      .map((r: any) => ({
       id: `ddg-${Math.random().toString(36).substr(2, 9)}`,
       url: r.image,
       thumbnail: r.thumbnail,
@@ -244,7 +269,10 @@ app.get("/api/search-duckduckgo", async (req, res) => {
       height: r.height
     }));
 
-    res.json({ results });
+    // Remove duplicates based on URL
+    const uniqueResults = Array.from(new Map(results.map((item: any) => [item.url, item])).values());
+
+    res.json({ results: uniqueResults });
   } catch (error: any) {
     console.error("DDG search error:", error);
     res.status(500).json({ error: error.message });
@@ -392,6 +420,15 @@ app.get("/api/image-proxy", async (req, res) => {
       if (nextRes) response = nextRes;
     }
 
+    // Strategy 3.5: Try HTTP instead of HTTPS (fixes some SSL/TLS issues)
+    if (!response || !response.ok) {
+      if (targetUrl.startsWith('https://')) {
+        const httpUrl = targetUrl.replace('https://', 'http://');
+        const nextRes = await tryStrategy(httpUrl, baseHeaders);
+        if (nextRes) response = nextRes;
+      }
+    }
+
     // Strategy 4: Fallback to public proxy (weserv.nl)
     if (!response || !response.ok) {
       try {
@@ -430,10 +467,32 @@ app.get("/api/image-proxy", async (req, res) => {
       }
     }
 
+    // Strategy 7: Fallback to codetabs
+    if (!response || !response.ok) {
+      try {
+        console.log(`Trying codetabs fallback for ${targetUrl}`);
+        const proxyUrl = `https://api.codetabs.com/v1/proxy?url=${encodeURIComponent(targetUrl)}`;
+        const nextRes = await fetch(proxyUrl);
+        if (nextRes.ok) response = nextRes;
+      } catch (e) {
+        lastError = e;
+      }
+    }
+
     if (!response || !response.ok) {
       const status = response ? response.status : "Unknown";
       const errorMsg = lastError ? lastError.message : "Failed to fetch";
-      console.warn(`All proxy strategies failed for ${targetUrl}. Status: ${status}, Error: ${errorMsg}`);
+      
+      // If it's a known dead site or SSL error, redirect to a placeholder to avoid breaking the UI
+      // Only do this if the request accepts images (e.g., from an <img> tag)
+      const acceptHeader = req.headers.accept || '';
+      if (acceptHeader.includes('image/')) {
+        console.log(`Image unavailable (${status}), serving placeholder for: ${targetUrl}`);
+        const seed = encodeURIComponent(targetUrl.split('/').pop() || 'fallback');
+        return res.redirect(302, `https://picsum.photos/seed/${seed}/400/600?blur=2`);
+      }
+
+      console.log(`All proxy strategies failed for ${targetUrl}. Status: ${status}, Error: ${errorMsg}`);
       return res.status(response ? response.status : 500).send(`Failed to fetch image: ${status}. ${errorMsg}`);
     }
 

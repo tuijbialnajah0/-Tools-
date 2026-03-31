@@ -117,13 +117,16 @@ export function VideoCompressor() {
       // 100 strength = CRF 45 (Smallest Size)
       const crf = 20 + Math.round((compressionStrength / 100) * 25);
 
-      // Prepare FFmpeg arguments
+      const threads = navigator.hardwareConcurrency ? navigator.hardwareConcurrency.toString() : '4';
+      
+      // Prepare FFmpeg arguments for maximum speed and device utilization
       const args = [
         '-i', inputName,
         '-vcodec', 'libx264',
         '-crf', crf.toString(),
-        '-preset', 'veryfast',
-        '-tune', 'film', // Better visual quality for most videos
+        '-preset', 'ultrafast', // Fastest encoding speed
+        '-tune', 'fastdecode', // Optimize for fast decoding/encoding
+        '-threads', threads, // Utilize all available CPU threads (puts more load on device)
         '-acodec', 'aac',
         '-b:a', '128k',
       ];

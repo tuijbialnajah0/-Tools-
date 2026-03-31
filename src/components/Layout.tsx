@@ -4,27 +4,10 @@ import { useTools } from "../context/ToolContext";
 import { ToolManager } from "./ToolManager";
 import { ThemeEffects } from "./ThemeEffects";
 import { motion, AnimatePresence } from "framer-motion";
-import {
-  LayoutDashboard,
-  Wrench,
-  Menu,
-  X,
-  Sun,
-  Moon,
-  Image,
-  Maximize,
-  Palette,
-  QrCode,
-  FileCode,
-  Terminal,
-  FileText,
-  MessageCircle,
-  Activity,
-  Video,
-  AlertCircle,
-} from "lucide-react";
+import { LayoutDashboard, Wrench, Menu, X, Sun, Moon, Image, Maximize, Palette, QrCode, FileCode, Terminal, FileText, MessageCircle, Activity, Video, AlertCircle, TrendingUp } from "lucide-react";
 import { clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { usageService } from "../services/usageService";
 
 function cn(...inputs: (string | undefined | null | false)[]) {
   return twMerge(clsx(inputs));
@@ -66,6 +49,15 @@ export function Layout() {
       localStorage.setItem("theme", "light");
     }
   }, [isDarkMode]);
+
+  // Track tool usage on route change
+  useEffect(() => {
+    const path = location.pathname.slice(1);
+    // Only track if it's a tool path (not dashboard, themes, or empty)
+    if (path && path !== 'themes' && path !== '') {
+      usageService.incrementUsage(path);
+    }
+  }, [location.pathname]);
 
   const toggleTheme = () => setIsDarkMode(!isDarkMode);
 

@@ -1,9 +1,9 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { 
   Play,
-   
   RotateCw, 
   Image, 
+  Crop,
   QrCode, 
   Code, 
   Globe,
@@ -32,10 +32,13 @@ import {
   Eraser,
   Film,
   Copy,
-  Files
+  Files,
+  TrendingUp,
+  Activity
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
+import { usageService } from "../services/usageService";
 
 type Tool = {
   id: string;
@@ -59,10 +62,19 @@ export function Dashboard() {
       return [];
     }
   });
+  const [usageData, setUsageData] = useState<Record<string, number>>({});
 
   useEffect(() => {
     localStorage.setItem("favorite-tools", JSON.stringify(favorites));
   }, [favorites]);
+
+  useEffect(() => {
+    const fetchUsage = async () => {
+      const data = await usageService.getAllUsage();
+      setUsageData(data);
+    };
+    fetchUsage();
+  }, []);
 
   const toggleFavorite = (toolId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -78,6 +90,7 @@ export function Dashboard() {
     { id: 'audio-visualiser', name: 'Audio Visualiser', description: 'Convert MP3 to animated sound wave videos.', category: ['Social', 'Utility'], icon: MonitorPlay, inDevelopment: true },
     { id: 'background-remover', name: 'BG Remover', description: 'AI background removal.', category: ['Image & Photo', 'AI Tools'], icon: Image, isPopular: true, inDevelopment: true },
     { id: 'bulk-image-compressor', name: 'Bulk Image Compressor', description: 'Batch image compression.', category: 'Utility', icon: Layers },
+    { id: 'bulk-image-cropper', name: 'Bulk Image Cropper', description: 'Crop multiple images at once with precise control and custom aspect ratios.', category: ['Image & Photo', 'Utility'], icon: Crop, isPopular: true },
     { id: 'bulk-image-rotator', name: 'Bulk Image Rotator', description: 'Rotate multiple images individually and download all at once.', category: 'Utility', icon: RotateCw, isPopular: true },
     { id: 'code-base', name: 'Code Base', description: 'AI code builder & preview.', category: ['AI Tools'], icon: FileCode, isPopular: true, inDevelopment: true },
     { id: 'code-formatter', name: 'Code Formatter', description: 'Clean & format code.', category: 'Utility', icon: Code },
@@ -102,12 +115,14 @@ export function Dashboard() {
     { id: 'pdf-to-image', name: 'PDF to Image', description: 'Convert PDF pages into high-quality images.', category: 'Utility', icon: FileImage },
     { id: 'pfp-anima', name: 'PFP Anima', description: 'Animate profile pictures.', category: 'Image & Photo', icon: Zap },
     { id: 'pfp-anima-remastered', name: 'PFP Anima Remastered', description: 'Anime asset search with bulk download.', category: ['Image & Photo', 'Social'], icon: Sparkles, isPopular: true },
+    { id: 'qr-gen-remastered', name: 'QR Code Gen~Remastered', description: 'Artistic offline QR generator with presets and logos.', category: ['Utility', 'Design'], icon: QrCode, isPopular: true },
     { id: 'qr-code-generator', name: 'QR Generator', description: 'Create custom QR codes.', category: 'Utility', icon: QrCode },
     { id: 'smart-code-generator', name: 'Smart Code', description: 'Extract code from text.', category: 'Utility', icon: Code, isPopular: true },
     { id: 'text-to-image', name: 'Text to Image', description: 'AI image generation.', category: 'AI Tools', icon: Image, inDevelopment: true },
     { id: 'text-to-cinematic-notes', name: 'Text To Notes', description: 'Text to study experience.', category: 'AI Tools', icon: Sparkles },
     { id: 'video-compressor', name: 'Video Compressor', description: 'Compress videos offline in your browser.', category: 'Utility', icon: VideoIcon, isPopular: true },
-    { id: 'video-storyboard', name: 'Video Storyboard', description: 'Extract unique scenes and generate storyboards from videos.', category: 'Utility', icon: Film, isPopular: true },
+    { id: 'video-frame-extractor', name: 'Video Frame Extractor', description: 'Extract image sequences from video files.', category: 'Utility', icon: Film, isPopular: true },
+    { id: 'video-storyboard', name: 'Video Storyboard', description: 'Extract unique scenes and generate storyboards from videos.', category: 'Utility', icon: Film, isPopular: true, inDevelopment: true },
     { id: 'video-to-audio', name: 'Video to Audio', description: 'Extract audio from video files.', category: 'Utility', icon: Video },
     { id: 'wa-s-generator', name: 'WA Generator', description: 'AI sticker generation.', category: 'Social', icon: Smile },
     { id: 'whatsapp-s-create', name: 'WA Sticker', description: 'Create WhatsApp stickers.', category: 'Social', icon: MessageSquare },
@@ -122,6 +137,7 @@ export function Dashboard() {
     const explicitMappings: Record<string, string> = {
       "BG Remover": "/background-remover",
       "WA Sticker": "/whatsapp-s-create",
+      "QR Code Gen~Remastered": "/qr-gen-remastered",
       "QR Generator": "/qr-code-generator",
       "Smart Code": "/smart-code-generator",
       "Code Base": "/code-base",
@@ -154,6 +170,7 @@ export function Dashboard() {
       "Fancy Fonts": "/fancy-font-generator",
       "PDF to Image": "/pdf-to-image",
       "Video Compressor": "/video-compressor",
+      "Video Frame Extractor": "/video-frame-extractor",
       "Video Storyboard": "/video-storyboard",
       "YouTube Multi-View": "/youtube-multiview",
       "Metadata Remover": "/bulk-metadata-remover",
@@ -175,7 +192,7 @@ export function Dashboard() {
     const allCategories = tools
       .filter(t => !t.inDevelopment)
       .flatMap(t => Array.isArray(t.category) ? t.category : [t.category]);
-    return ["All Tools", "Favorites", "In Development", ...Array.from(new Set(allCategories)).filter(Boolean)];
+    return ["All Tools", "Most Used", "Favorites", "In Development", ...Array.from(new Set(allCategories)).filter(Boolean)];
   }, [tools]);
   
   const filteredTools = useMemo(() => {
@@ -185,7 +202,7 @@ export function Dashboard() {
       let matchesCategory = false;
       if (selectedCategory === "In Development") {
         matchesCategory = !!tool.inDevelopment;
-      } else if (selectedCategory === "All Tools") {
+      } else if (selectedCategory === "All Tools" || selectedCategory === "Most Used") {
         matchesCategory = !tool.inDevelopment;
       } else if (selectedCategory === "Favorites") {
         matchesCategory = favorites.includes(tool.id) && !tool.inDevelopment;
@@ -198,8 +215,17 @@ export function Dashboard() {
       return matchesCategory && matchesSearch;
     });
 
+    if (selectedCategory === "Most Used") {
+      return filtered.sort((a, b) => {
+        const usageA = usageData[a.id] || 0;
+        const usageB = usageData[b.id] || 0;
+        if (usageB !== usageA) return usageB - usageA;
+        return a.name.localeCompare(b.name);
+      });
+    }
+
     return filtered.sort((a, b) => a.name.localeCompare(b.name));
-  }, [selectedCategory, searchQuery, tools, favorites]);
+  }, [selectedCategory, searchQuery, tools, favorites, usageData]);
 
   const popularTools = useMemo(() => tools.filter(t => t.isPopular && !t.inDevelopment), [tools]);
 
@@ -293,6 +319,7 @@ export function Dashboard() {
                       onExecute={handleExecute} 
                       isFavorite={favorites.includes(tool.id)}
                       onToggleFavorite={(e) => toggleFavorite(tool.id, e)}
+                      usageCount={usageData[tool.id] || 0}
                     />
                   ))}
                 </div>
@@ -322,11 +349,13 @@ const ToolCard: React.FC<{
   onExecute: (tool: Tool) => void;
   isFavorite: boolean;
   onToggleFavorite: (e: React.MouseEvent) => void;
+  usageCount: number;
 }> = ({ 
   tool, 
   onExecute,
   isFavorite,
-  onToggleFavorite
+  onToggleFavorite,
+  usageCount
 }) => {
   const Icon = tool.icon;
   const cleanDesc = tool.description.replace(/\[STATUS:(working|development)\]/g, '').trim();
@@ -352,6 +381,14 @@ const ToolCard: React.FC<{
       >
         <Star className={`w-5 h-5 ${isFavorite ? 'fill-current' : ''}`} />
       </button>
+
+      {/* Usage Count Badge */}
+      {usageCount > 0 && (
+        <div className="absolute bottom-4 left-24 z-20 flex items-center gap-1.5 px-2.5 py-1 bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 rounded-full text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest group-hover:bg-indigo-50 dark:group-hover:bg-indigo-900/20 group-hover:border-indigo-100 dark:group-hover:border-indigo-900/30 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-all">
+          <Activity className="w-3 h-3" />
+          {usageCount.toLocaleString()} Uses
+        </div>
+      )}
 
       {/* Icon Section */}
       <div className="shrink-0 w-16 h-16 sm:w-20 sm:h-20 rounded-3xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-indigo-600 dark:text-indigo-400 group-hover:bg-indigo-600 group-hover:text-white transition-all duration-500 shadow-inner overflow-hidden">

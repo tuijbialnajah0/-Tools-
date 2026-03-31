@@ -30,6 +30,7 @@ import ColorPalette from "./pages/ColorPalette";
 import EmojiArtGenerator from "./pages/EmojiArtGenerator";
 import { BackgroundRemover } from "./pages/BackgroundRemover";
 import { QrGenerator } from "./pages/QrGenerator";
+import { QrGenRemastered } from "./pages/QrGenRemastered";
 import { SmartCodeGenerator } from "./pages/SmartCodeGenerator";
 import { PdfConverter } from "./pages/PdfConverter";
 import { WhatsappSCreate } from "./pages/WhatsappSCreate";
@@ -50,6 +51,8 @@ import BulkImageRotator from "./pages/BulkImageRotator";
 import BulkMetadataRemover from "./pages/BulkMetadataRemover";
 import { PFPAnimaRemastered } from "./pages/PFPAnimaRemastered";
 import DuplicateImageFinder from "./pages/DuplicateImageFinder";
+import VideoFrameExtractor from "./pages/VideoFrameExtractor";
+import BulkImageCropper from "./pages/BulkImageCropper";
 
 export default function App() {
   return (
@@ -61,6 +64,7 @@ export default function App() {
             <Route path="themes" element={<Themes />} />
             <Route path="background-remover" element={<BackgroundRemover />} />
             <Route path="qr-code-generator" element={<QrGenerator />} />
+            <Route path="qr-gen-remastered" element={<QrGenRemastered />} />
             <Route path="smart-code-generator" element={<SmartCodeGenerator />} />
             <Route path="code-base" element={<CodeBase />} />
             <Route path="pdf-converter" element={<PdfConverter />} />
@@ -98,6 +102,8 @@ export default function App() {
             <Route path="bulk-image-rotator" element={<BulkImageRotator />} />
             <Route path="bulk-metadata-remover" element={<BulkMetadataRemover />} />
             <Route path="duplicate-image-finder" element={<DuplicateImageFinder />} />
+            <Route path="video-frame-extractor" element={<VideoFrameExtractor />} />
+            <Route path="bulk-image-cropper" element={<BulkImageCropper />} />
             
             <Route path="text-viewer" element={<TextViewer />} />
             

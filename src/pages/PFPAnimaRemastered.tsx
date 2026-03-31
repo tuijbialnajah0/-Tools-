@@ -127,6 +127,16 @@ export function PFPAnimaRemastered() {
     setSelectedIds(newSelected);
   };
 
+  const selectAllPages = () => {
+    const newSelected = new Set(selectedIds);
+    allImages.forEach(img => newSelected.add(img.id));
+    setSelectedIds(newSelected);
+  };
+
+  const deselectAllPages = () => {
+    setSelectedIds(new Set());
+  };
+
   const downloadSelected = async (type: 'zip' | 'individual') => {
     if (selectedIds.size === 0) return;
 
@@ -140,35 +150,46 @@ export function PFPAnimaRemastered() {
       if (type === 'zip') {
         const zip = new JSZip();
         let successCount = 0;
+        let completedCount = 0;
         
-        const concurrency = 5;
-        for (let i = 0; i < selectedImages.length; i += concurrency) {
-          const chunk = selectedImages.slice(i, i + concurrency);
+        // Concurrent queue system
+        const concurrency = 10;
+        let currentIndex = 0;
+        
+        const processNext = async (): Promise<void> => {
+          if (currentIndex >= selectedImages.length) return;
           
-          await Promise.all(chunk.map(async (img) => {
-            try {
-              // Try direct fetch first, then proxy
-              let response = await fetch(img.url).catch(() => null);
-              if (!response || !response.ok) {
-                response = await fetch(`/api/image-proxy?url=${encodeURIComponent(img.url)}`);
-              }
-              
-              if (response && response.ok) {
-                const blob = await response.blob();
-                const ext = img.url.split('.').pop()?.split(/[#?]/)[0] || 'jpg';
-                const safeKeyword = keyword.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-                const safeId = img.id.replace(/[^a-z0-9]/gi, '_');
-                const filename = `anima_${safeKeyword}_${safeId}.${ext}`;
-                zip.file(filename, blob);
-                successCount++;
-              }
-            } catch (err) {
-              console.error(`Failed to download ${img.url}`, err);
+          const index = currentIndex++;
+          const img = selectedImages[index];
+          
+          try {
+            // Try direct fetch first, then proxy
+            let response = await fetch(img.url).catch(() => null);
+            if (!response || !response.ok) {
+              response = await fetch(`/api/image-proxy?url=${encodeURIComponent(img.url)}`);
             }
-          }));
-          
-          setDownloadProgress(Math.round(((i + chunk.length) / selectedImages.length) * 100));
-        }
+            
+            if (response && response.ok) {
+              const blob = await response.blob();
+              const ext = img.url.split('.').pop()?.split(/[#?]/)[0] || 'jpg';
+              const safeKeyword = keyword.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+              const safeId = img.id.replace(/[^a-z0-9]/gi, '_');
+              const filename = `anima_${safeKeyword}_${safeId}.${ext}`;
+              zip.file(filename, blob);
+              successCount++;
+            }
+          } catch (err) {
+            console.error(`Failed to download ${img.url}`, err);
+          } finally {
+            completedCount++;
+            setDownloadProgress(Math.round((completedCount / selectedImages.length) * 100));
+            await processNext(); // Start the next one as soon as this one finishes
+          }
+        };
+
+        // Start initial batch of workers
+        const workers = Array(Math.min(concurrency, selectedImages.length)).fill(null).map(() => processNext());
+        await Promise.all(workers);
 
         if (successCount === 0) {
           throw new Error("Failed to download any images. They might be protected.");
@@ -184,48 +205,54 @@ export function PFPAnimaRemastered() {
         a.click();
         URL.revokeObjectURL(url);
       } else {
-        // Individual downloads - Process in batches of 10 for speed
+        // Individual downloads - Concurrent queue system
         let successCount = 0;
-        const batchSize = 10;
+        let completedCount = 0;
+        const concurrency = 10;
+        let currentIndex = 0;
         
-        for (let i = 0; i < selectedImages.length; i += batchSize) {
-          const batch = selectedImages.slice(i, i + batchSize);
+        const processNext = async (): Promise<void> => {
+          if (currentIndex >= selectedImages.length) return;
           
-          await Promise.all(batch.map(async (img, index) => {
-            try {
-              let response = await fetch(img.url).catch(() => null);
-              if (!response || !response.ok) {
-                response = await fetch(`/api/image-proxy?url=${encodeURIComponent(img.url)}`);
-              }
-              
-              if (response && response.ok) {
-                const blob = await response.blob();
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                const ext = img.url.split('.').pop()?.split(/[#?]/)[0] || 'jpg';
-                const safeKeyword = keyword.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-                const safeId = img.id.replace(/[^a-z0-9]/gi, '_');
-                const timestamp = Date.now();
-                a.download = `anima_${safeKeyword}_${safeId}_${timestamp}.${ext}`;
-                a.click();
-                
-                // Cleanup after a short delay to ensure download starts
-                setTimeout(() => URL.revokeObjectURL(url), 1000);
-                successCount++;
-              }
-            } catch (err) {
-              console.error(`Failed to download ${img.url}`, err);
+          const index = currentIndex++;
+          const img = selectedImages[index];
+          
+          try {
+            let response = await fetch(img.url).catch(() => null);
+            if (!response || !response.ok) {
+              response = await fetch(`/api/image-proxy?url=${encodeURIComponent(img.url)}`);
             }
-          }));
-          
-          setDownloadProgress(Math.round((Math.min(i + batchSize, selectedImages.length) / selectedImages.length) * 100));
-          
-          // Small delay between batches to prevent browser from blocking too many simultaneous downloads
-          if (i + batchSize < selectedImages.length) {
-            await new Promise(r => setTimeout(r, 500));
+            
+            if (response && response.ok) {
+              const blob = await response.blob();
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              const ext = img.url.split('.').pop()?.split(/[#?]/)[0] || 'jpg';
+              const safeKeyword = keyword.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+              const safeId = img.id.replace(/[^a-z0-9]/gi, '_');
+              const timestamp = Date.now();
+              a.download = `anima_${safeKeyword}_${safeId}_${timestamp}.${ext}`;
+              a.click();
+              
+              // Cleanup after a short delay to ensure download starts
+              setTimeout(() => URL.revokeObjectURL(url), 1000);
+              successCount++;
+            }
+          } catch (err) {
+            console.error(`Failed to download ${img.url}`, err);
+          } finally {
+            completedCount++;
+            setDownloadProgress(Math.round((completedCount / selectedImages.length) * 100));
+            // Small delay to prevent browser from blocking too many simultaneous downloads
+            await new Promise(r => setTimeout(r, 100));
+            await processNext();
           }
-        }
+        };
+
+        // Start initial batch of workers
+        const workers = Array(Math.min(concurrency, selectedImages.length)).fill(null).map(() => processNext());
+        await Promise.all(workers);
       }
 
       setStatusMessage("Download complete!");
@@ -366,7 +393,7 @@ export function PFPAnimaRemastered() {
             </div>
             
             <div className="flex flex-wrap items-center justify-center gap-3">
-              <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 p-1.5 rounded-2xl">
+              <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 p-1.5 rounded-2xl flex-wrap justify-center">
                 <button
                   onClick={selectAllOnPage}
                   className="px-4 py-2 text-xs font-black text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 rounded-xl transition-all flex items-center gap-2"
@@ -379,9 +406,22 @@ export function PFPAnimaRemastered() {
                 >
                   <X className="w-4 h-4" /> Clear Page
                 </button>
+                <div className="w-px h-6 bg-slate-300 dark:bg-slate-600 mx-1 hidden sm:block"></div>
+                <button
+                  onClick={selectAllPages}
+                  className="px-4 py-2 text-xs font-black text-indigo-600 dark:text-indigo-400 hover:bg-white dark:hover:bg-slate-700 rounded-xl transition-all flex items-center gap-2"
+                >
+                  <CheckCircle2 className="w-4 h-4" /> Select All
+                </button>
+                <button
+                  onClick={deselectAllPages}
+                  className="px-4 py-2 text-xs font-black text-rose-600 dark:text-rose-400 hover:bg-white dark:hover:bg-slate-700 rounded-xl transition-all flex items-center gap-2"
+                >
+                  <X className="w-4 h-4" /> Clear All
+                </button>
               </div>
 
-              <div className="h-8 w-px bg-slate-200 dark:bg-slate-800 hidden sm:block" />
+              <div className="h-8 w-px bg-slate-200 dark:bg-slate-800 hidden lg:block" />
 
               <div className="flex items-center gap-2">
                 <button
@@ -452,13 +492,6 @@ export function PFPAnimaRemastered() {
                       }}
                     />
                     
-                    {/* Selection Overlay */}
-                    <div className={`absolute inset-0 flex items-center justify-center transition-opacity duration-300 ${isSelected ? 'opacity-100' : 'opacity-0'}`}>
-                      <div className="bg-indigo-600 text-white p-3 rounded-full shadow-2xl scale-125">
-                        <Check className="w-8 h-8 stroke-[4px]" />
-                      </div>
-                    </div>
-
                     {/* Info Overlay */}
                     <div className={`absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent p-5 flex flex-col justify-end transition-opacity duration-300 ${isSelected ? 'opacity-0' : 'opacity-0 group-hover:opacity-100'}`}>
                       <div className="flex items-center justify-between mb-2">

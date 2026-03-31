@@ -1131,7 +1131,7 @@ export function ImageDatasetCollector() {
       const url = URL.createObjectURL(zipBlob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${keyword.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_dataset.zip`;
+      a.download = `${keyword.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_dataset_${Date.now()}.zip`;
       a.click();
       URL.revokeObjectURL(url);
       

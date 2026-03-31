@@ -546,7 +546,9 @@ export function PFPAnima() {
             if (response && response.ok) {
               const blob = await response.blob();
               const ext = img.url.split('.').pop()?.split(/[#?]/)[0] || 'jpg';
-              const filename = `${keyword.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_${String(successCount + 1).padStart(3, '0')}.${ext}`;
+              const safeKeyword = keyword.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+              const safeId = img.id.replace(/[^a-z0-9]/gi, '_');
+              const filename = `${safeKeyword}_p${currentPage}_${safeId}.${ext}`;
               zip.file(filename, blob);
               successCount++;
             }

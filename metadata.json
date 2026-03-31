@@ -1,5 +1,5 @@
 {
-  "name": "𝙱𝙹𝙴 ~ Tools",
+  "name": "BJE ~ Tools",
   "description": "A powerful suite of productivity and creative tools including AI generation, image processing, and document utilities.",
   "requestFramePermissions": ["clipboard-read", "clipboard-write", "camera", "microphone"]
 }

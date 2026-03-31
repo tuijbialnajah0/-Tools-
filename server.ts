@@ -31,7 +31,7 @@ async function startServer() {
     } catch (e: any) {
       console.warn("Vite not found, falling back to static serving.", e.message);
       app.use(express.static(distPath));
-      app.get('(.*)', (req, res) => {
+      app.get('*all', (req, res) => {
         if (fs.existsSync(indexPath)) {
           res.sendFile(indexPath);
         } else {
@@ -41,7 +41,7 @@ async function startServer() {
     }
   } else {
     app.use(express.static(distPath));
-    app.get('(.*)', (req, res) => {
+    app.get('*all', (req, res) => {
       if (fs.existsSync(indexPath)) {
         res.sendFile(indexPath, (err) => {
           if (err) {
