@@ -53,6 +53,8 @@ import { PFPAnimaRemastered } from "./pages/PFPAnimaRemastered";
 import DuplicateImageFinder from "./pages/DuplicateImageFinder";
 import VideoFrameExtractor from "./pages/VideoFrameExtractor";
 import BulkImageCropper from "./pages/BulkImageCropper";
+import SvgPatternGenerator from "./pages/SvgPatternGenerator";
+import { HtmlToApk } from "./pages/HtmlToApk";
 
 export default function App() {
   return (
@@ -104,6 +106,8 @@ export default function App() {
             <Route path="duplicate-image-finder" element={<DuplicateImageFinder />} />
             <Route path="video-frame-extractor" element={<VideoFrameExtractor />} />
             <Route path="bulk-image-cropper" element={<BulkImageCropper />} />
+            <Route path="svg-pattern-generator" element={<SvgPatternGenerator />} />
+            <Route path="html-to-apk" element={<HtmlToApk />} />
             
             <Route path="text-viewer" element={<TextViewer />} />
             

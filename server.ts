@@ -1,7 +1,7 @@
 import express from "express";
 import path from "path";
 import fs from "fs";
-import app from "./api/index";
+import app from "./api/index.ts";
 
 async function startServer() {
   const PORT = 3000;
@@ -31,7 +31,7 @@ async function startServer() {
     } catch (e: any) {
       console.warn("Vite not found, falling back to static serving.", e.message);
       app.use(express.static(distPath));
-      app.get('*all', (req, res) => {
+      app.get('*', (req, res) => {
         if (fs.existsSync(indexPath)) {
           res.sendFile(indexPath);
         } else {
@@ -41,7 +41,7 @@ async function startServer() {
     }
   } else {
     app.use(express.static(distPath));
-    app.get('*all', (req, res) => {
+    app.get('*', (req, res) => {
       if (fs.existsSync(indexPath)) {
         res.sendFile(indexPath, (err) => {
           if (err) {
@@ -60,7 +60,8 @@ async function startServer() {
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`Server is listening on 0.0.0.0:${PORT}`);
+    console.log(`Production mode: ${isProduction}`);
   });
 }
 

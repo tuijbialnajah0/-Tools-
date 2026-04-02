@@ -3,28 +3,33 @@ self.onmessage = (e) => {
   const { width, height, data } = imageData;
   
   const energy = new Float32Array(width * height);
+  const cx = width / 2;
+  const cy = height / 2;
+
   for (let y = 0; y < height - 1; y++) {
+    const yOffset = y * width;
+    const nextYOffset = (y + 1) * width;
+    const dy_c = (y - cy) / cy;
+    const dy_c_sq = dy_c * dy_c;
+
     for (let x = 0; x < width - 1; x++) {
-      const i = (y * width + x) * 4;
-      const r = data[i], g = data[i+1], b = data[i+2];
+      const i = (yOffset + x) * 4;
+      const iRight = i + 4;
+      const iDown = (nextYOffset + x) * 4;
+
+      // Simple gradient calculation
+      const dx = Math.abs(data[i] - data[iRight]) + 
+                 Math.abs(data[i+1] - data[iRight+1]) + 
+                 Math.abs(data[i+2] - data[iRight+2]);
       
-      const iRight = (y * width + x + 1) * 4;
-      const rR = data[iRight], gR = data[iRight+1], bR = data[iRight+2];
+      const dy = Math.abs(data[i] - data[iDown]) + 
+                 Math.abs(data[i+1] - data[iDown+1]) + 
+                 Math.abs(data[i+2] - data[iDown+2]);
       
-      const iDown = ((y + 1) * width + x) * 4;
-      const rD = data[iDown], gD = data[iDown+1], bD = data[iDown+2];
-      
-      const dx = Math.abs(r - rR) + Math.abs(g - gR) + Math.abs(b - bR);
-      const dy = Math.abs(r - rD) + Math.abs(g - gD) + Math.abs(b - bD);
-      
-      const cx = width / 2;
-      const cy = height / 2;
       const dx_c = (x - cx) / cx;
-      const dy_c = (y - cy) / cy;
-      const distSq = dx_c * dx_c + dy_c * dy_c;
-      const centerBias = Math.exp(-distSq * 2); 
+      const centerBias = Math.exp(-(dx_c * dx_c + dy_c_sq) * 2); 
       
-      energy[y * width + x] = (dx + dy) * centerBias;
+      energy[yOffset + x] = (dx + dy) * centerBias;
     }
   }
   

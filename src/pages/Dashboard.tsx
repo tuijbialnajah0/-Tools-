@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { 
   Play,
+  Grid,
   RotateCw, 
   Image, 
   Crop,
@@ -102,6 +103,7 @@ export function Dashboard() {
     { id: 'fancy-font-generator', name: 'Fancy Fonts', description: 'Convert text to stylish unicode fonts.', category: 'Utility', icon: Type, isPopular: true },
     { id: 'favicon-generator', name: 'Favicon', description: 'Generate favicon sets from images.', category: 'Utility', icon: Image },
     { id: 'html-viewer', name: 'HTML Viewer', description: 'Sandbox HTML preview.', category: 'Utility', icon: FileCode },
+    { id: 'html-to-apk', name: 'Web2App Studio', description: 'Convert HTML/JS/CSS into a complete Android Studio project or PWA.', category: ['Utility', 'Development'], icon: Package, isPopular: true },
     { id: 'image-colourizer', name: 'Image colorizer', description: 'Colorize B&W photos.', category: ['Image & Photo', 'AI Tools'], icon: Image, inDevelopment: true },
     { id: 'image-compressor', name: 'Image compressor', description: 'Browser-based compression.', category: 'Utility', icon: Image },
     { id: 'image-dataset-collector', name: 'Image Data-Set Collector', description: 'Collect images for AI.', category: 'Utility', icon: Layers },
@@ -118,6 +120,7 @@ export function Dashboard() {
     { id: 'qr-gen-remastered', name: 'QR Code Gen~Remastered', description: 'Artistic offline QR generator with presets and logos.', category: ['Utility', 'Design'], icon: QrCode, isPopular: true },
     { id: 'qr-code-generator', name: 'QR Generator', description: 'Create custom QR codes.', category: 'Utility', icon: QrCode },
     { id: 'smart-code-generator', name: 'Smart Code', description: 'Extract code from text.', category: 'Utility', icon: Code, isPopular: true },
+    { id: 'svg-pattern-generator', name: 'SVG Pattern Generator', description: 'Create advanced, high-performance SVG backgrounds with real-time customization.', category: ['Design', 'Utility'], icon: Grid, isPopular: true },
     { id: 'text-to-image', name: 'Text to Image', description: 'AI image generation.', category: 'AI Tools', icon: Image, inDevelopment: true },
     { id: 'text-to-cinematic-notes', name: 'Text To Notes', description: 'Text to study experience.', category: 'AI Tools', icon: Sparkles },
     { id: 'video-compressor', name: 'Video Compressor', description: 'Compress videos offline in your browser.', category: 'Utility', icon: VideoIcon, isPopular: true },
@@ -151,6 +154,7 @@ export function Dashboard() {
       "Notes Create": "/notes-create",
       "Text To Notes": "/text-to-cinematic-notes",
       "HTML Viewer": "/html-viewer",
+      "Web2App Studio": "/html-to-apk",
       "Text to Image": "/text-to-image",
       "Image compressor": "/image-compressor",
       "Bulk Image Compressor": "/bulk-image-compressor",
@@ -262,7 +266,12 @@ export function Dashboard() {
             className="relative w-full lg:w-[400px] group"
           >
             <div className="absolute inset-0 bg-indigo-500/20 rounded-3xl blur-2xl opacity-0 group-focus-within:opacity-100 transition-opacity" />
-            <div className="relative">
+            <motion.div 
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.3 }}
+              className="relative"
+            >
               <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-6 h-6 text-slate-400 group-focus-within:text-indigo-600 transition-colors" />
               <input 
                 type="text"
@@ -271,7 +280,7 @@ export function Dashboard() {
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-14 pr-6 py-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all text-slate-900 dark:text-white shadow-xl shadow-slate-200/50 dark:shadow-none text-lg font-medium"
               />
-            </div>
+            </motion.div>
           </motion.div>
         </header>
 
@@ -281,9 +290,9 @@ export function Dashboard() {
             {categories.map((category, idx) => (
               <motion.button
                 key={category}
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: idx * 0.05 }}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.4 + idx * 0.05 }}
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={() => setSelectedCategory(category)}

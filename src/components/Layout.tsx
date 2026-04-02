@@ -250,28 +250,34 @@ export function Layout() {
         </div>
 
         <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
-          {navItems.map((item) => {
+          {navItems.map((item, idx) => {
             const isActive = location.pathname === item.href;
             return (
-              <Link
+              <motion.div
                 key={item.name}
-                to={item.href}
-                onClick={closeSidebar}
-                className={cn(
-                  "flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors",
-                  isActive
-                    ? "bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400"
-                    : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800",
-                )}
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.1 + idx * 0.05 }}
               >
-                <item.icon
+                <Link
+                  to={item.href}
+                  onClick={closeSidebar}
                   className={cn(
-                    "w-5 h-5 mr-3",
-                    isActive ? "text-indigo-700 dark:text-indigo-400" : "text-slate-400 dark:text-slate-500",
+                    "flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors",
+                    isActive
+                      ? "bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400"
+                      : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800",
                   )}
-                />
-                {item.name}
-              </Link>
+                >
+                  <item.icon
+                    className={cn(
+                      "w-5 h-5 mr-3",
+                      isActive ? "text-indigo-700 dark:text-indigo-400" : "text-slate-400 dark:text-slate-500",
+                    )}
+                  />
+                  {item.name}
+                </Link>
+              </motion.div>
             );
           })}
 
@@ -284,11 +290,17 @@ export function Layout() {
                   Running Services
                 </p>
               </div>
-              {runningTools.map((tool) => {
+              {runningTools.map((tool, idx) => {
                 const isActive = location.pathname === `/${tool.path}`;
                 const Icon = TOOL_ICONS[tool.path] || Wrench;
                 return (
-                  <div key={tool.id} className="group relative">
+                  <motion.div 
+                    key={tool.id} 
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.2 + idx * 0.05 }}
+                    className="group relative"
+                  >
                     <Link
                       to={`/${tool.path}`}
                       onClick={closeSidebar}
@@ -314,7 +326,7 @@ export function Layout() {
                     >
                       <X className="w-4 h-4" />
                     </button>
-                  </div>
+                  </motion.div>
                 );
               })}
             </>
@@ -358,9 +370,15 @@ export function Layout() {
               <span className="ml-3 text-sm font-medium text-slate-500 dark:text-slate-400">Back to Dashboard</span>
             </div>
           )}
-          <div className="flex-1 min-h-0 flex flex-col">
+          <motion.div 
+            key={location.pathname}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, ease: "easeOut" }}
+            className="flex-1 min-h-0 flex flex-col"
+          >
             <Outlet />
-          </div>
+          </motion.div>
           <ToolManager />
         </div>
       </main>

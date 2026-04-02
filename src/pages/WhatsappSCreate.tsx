@@ -217,18 +217,23 @@ export function WhatsappSCreate() {
     setCropProgress(0);
     
     const targetRatio = cropRatio === 0 ? customRatioW / customRatioH : cropRatio;
-    const newStickers: StickerFile[] = [];
+    const newStickers: StickerFile[] = new Array(stickers.length);
+    let completed = 0;
     
-    const worker = new CropWorker();
+    // Use a pool of workers for parallel processing
+    const workerCount = Math.min(navigator.hardwareConcurrency || 4, 4);
+    const workers = Array.from({ length: workerCount }, () => new CropWorker());
     
-    try {
-      for (let i = 0; i < stickers.length; i++) {
-        const sticker = stickers[i];
-        
+    const processSticker = async (sticker: StickerFile, index: number, worker: Worker) => {
+      try {
         const img = new Image();
         img.src = sticker.preview;
-        await new Promise((resolve) => { img.onload = resolve; });
+        await new Promise((resolve, reject) => { 
+          img.onload = resolve; 
+          img.onerror = reject;
+        });
         
+        // Scale down for energy calculation (faster)
         const scale = Math.min(1, 256 / Math.max(img.width, img.height));
         const w = Math.round(img.width * scale);
         const h = Math.round(img.height * scale);
@@ -236,15 +241,16 @@ export function WhatsappSCreate() {
         const canvas = document.createElement('canvas');
         canvas.width = w;
         canvas.height = h;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) continue;
+        const ctx = canvas.getContext('2d', { alpha: false });
+        if (!ctx) return;
         
         ctx.drawImage(img, 0, 0, w, h);
         const imageData = ctx.getImageData(0, 0, w, h);
         
+        // Use transferable for performance
         const cropResult = await new Promise<{cropX: number, cropY: number, cropW: number, cropH: number}>((resolve) => {
           worker.onmessage = (e) => resolve(e.data);
-          worker.postMessage({ id: sticker.id, imageData, targetRatio });
+          worker.postMessage({ id: sticker.id, imageData, targetRatio }, [imageData.data.buffer]);
         });
         
         const cropX = cropResult.cropX / scale;
@@ -259,27 +265,43 @@ export function WhatsappSCreate() {
         if (outCtx) {
           outCtx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
           
-          const blob = await new Promise<Blob | null>((resolve) => outCanvas.toBlob(resolve, sticker.file.type));
+          const blob = await new Promise<Blob | null>((resolve) => outCanvas.toBlob(resolve, sticker.file.type, 0.9));
           if (blob) {
             const newFile = new File([blob], sticker.file.name, { type: sticker.file.type });
-            newStickers.push({
+            newStickers[index] = {
               id: Math.random().toString(36).substring(7),
               file: newFile,
               preview: URL.createObjectURL(newFile)
-            });
+            };
             URL.revokeObjectURL(sticker.preview);
           }
         }
-        
-        setCropProgress(Math.round(((i + 1) / stickers.length) * 100));
+      } catch (err) {
+        console.error(`Error processing sticker ${index}:`, err);
+        newStickers[index] = sticker; // Keep original on error
+      } finally {
+        completed++;
+        setCropProgress(Math.round((completed / stickers.length) * 100));
+      }
+    };
+
+    try {
+      const tasks = stickers.map((sticker, i) => ({ sticker, i }));
+      const activePromises: Promise<void>[] = [];
+      
+      for (let i = 0; i < tasks.length; i++) {
+        const worker = workers[i % workerCount];
+        const promise = processSticker(tasks[i].sticker, tasks[i].i, worker);
+        activePromises.push(promise);
       }
       
-      setStickers(newStickers);
+      await Promise.all(activePromises);
+      setStickers(newStickers.filter(Boolean));
     } catch (err) {
       console.error("Cropping error:", err);
       setError("An error occurred during cropping.");
     } finally {
-      worker.terminate();
+      workers.forEach(w => w.terminate());
       setIsCropping(false);
       setShowCropModal(false);
     }
